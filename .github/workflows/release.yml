@@ -78,7 +78,9 @@ jobs:
           for(const asset of ["styles.css","main.js","config.js"])source=source.replace('"'+asset+'"','"'+asset+'?rev='+rev+'"');
           fs.writeFileSync(html,source);
           const app="frontend/main.js";
-          fs.writeFileSync(app,fs.readFileSync(app,"utf8").replace('"./shared/engine.js"','"./shared/engine.js?rev='+rev+'"'));
+          fs.writeFileSync(app,fs.readFileSync(app,"utf8")
+            .replace('"./shared/engine.js"','"./shared/engine.js?rev='+rev+'"')
+            .replace('"./camera.js"','"./camera.js?rev='+rev+'"'));
           console.log("Configured actual Worker URL:",url);
           JS
       - name: Smoke-test the deployed Worker
