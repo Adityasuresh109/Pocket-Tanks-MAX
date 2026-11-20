@@ -195,15 +195,17 @@ export class BarrageRoom {
   const hp=side=>r.players.filter(p=>p.team===side&&p.alive).reduce((sum,p)=>sum+p.hp,0);
   const alive=side=>r.players.filter(p=>p.team===side&&p.alive).length;
   const redHP=hp(0),blueHP=hp(1),redAlive=alive(0),blueAlive=alive(1);
-  // R3: finish genuinely one-sided games, not routine 40-turn HP calls.
+  // R3 graduated mercy rule: a victory must be earned by a strong surviving
+  // HP lead; tiny HP tiebreaks are never presented as decisive wins.
+  // Thresholds scale down as armies shrink, not damage or HP maximums.
   if(r.turnIndex>=24){
    const lead=Math.abs(redHP-blueHP);
    const lower=Math.max(1,Math.min(redHP,blueHP));
    const aliveLead=Math.abs(redAlive-blueAlive);
    const crushing=lead>=360&&aliveLead>=2;
-   const commanding=r.turnIndex>=30&&lead>=110&&aliveLead>=2&&lead/lower>=.6;
-   const lastStand=r.turnIndex>=34&&lead>=65&&aliveLead>=1&&lead/lower>=.65;
-   if(crushing||commanding||lastStand){await this.finish(redHP>blueHP?0:1);return;}
+   const commander=r.turnIndex>=27&&lead>=70&&aliveLead>=1&&lead/lower>=.75;
+   const finalAdvantage=r.turnIndex>=35&&lead>=50&&lead/lower>=.55;
+   if(crushing||commander||finalAdvantage){await this.finish(redHP>blueHP?0:1);return;}
   }
   if(r.turnIndex>=40){
    if(redHP!==blueHP){await this.finish(redHP>blueHP?0:1);return;}
