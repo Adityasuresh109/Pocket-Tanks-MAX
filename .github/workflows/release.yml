@@ -1,0 +1,108 @@
+
+name: BARRAGE — verify and release
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: barrage-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check every JavaScript entrypoint
+        run: npm run syntax
+      - name: Physics and combat regressions
+        run: npm test
+      - name: Verify Wrangler bundles the Worker and shared game engine
+        run: npx --yes wrangler@4 deploy --config worker/wrangler.toml --dry-run
+
+  release:
+    if: github.event_name != 'pull_request'
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate deployment secrets
+        env:
+          API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$API_TOKEN" ] || [ -z "$ACCOUNT_ID" ]; then
+            echo "::error::Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID under Actions secrets."
+            exit 1
+          fi
+      - name: Deploy Worker and room Durable Object
+        id: worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config worker/wrangler.toml
+      - name: Verify Worker URL and prepare GitHub Pages
+        env:
+          DEPLOYED_URL: ${{ steps.worker.outputs.deployment-url }}
+        run: |
+          node --input-type=module <<'JS'
+          import fs from "node:fs";
+          const raw=(process.env.DEPLOYED_URL||"").split(" (")[0].trim();
+          const url=raw.startsWith("https://")?raw:"https://"+raw;
+          if(!/^https:\/\/[a-z0-9.-]+\.workers\.dev\/?$/i.test(url))throw Error("Wrangler deployment URL missing or invalid");
+          fs.mkdirSync("frontend/shared",{recursive:true});
+          fs.copyFileSync("shared/engine.js","frontend/shared/engine.js");
+          fs.writeFileSync("frontend/config.js",'window.BARRAGE_WORKER_URL = '+JSON.stringify(url.replace(/\/$/,""))+';\n');
+          const html="frontend/index.html",rev=process.env.GITHUB_SHA.slice(0,12);
+          let source=fs.readFileSync(html,"utf8");
+          for(const asset of ["styles.css","main.js","config.js"])source=source.replace('"'+asset+'"','"'+asset+'?rev='+rev+'"');
+          fs.writeFileSync(html,source);
+          const app="frontend/main.js";
+          fs.writeFileSync(app,fs.readFileSync(app,"utf8").replace('"./shared/engine.js"','"./shared/engine.js?rev='+rev+'"'));
+          console.log("Configured actual Worker URL:",url);
+          JS
+      - name: Smoke-test the deployed Worker
+        env:
+          DEPLOYED_URL: ${{ steps.worker.outputs.deployment-url }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from "node:assert/strict";
+          const base=(process.env.DEPLOYED_URL||"").trim().split(" (")[0];
+          const url=base.startsWith("https://")?base:"https://"+base;
+          let healthy=false;
+          for(let attempt=0;attempt<12;attempt++){
+            try{const r=await fetch(url.replace(/\/$/,"")+"/health",{signal:AbortSignal.timeout(15000)});if(r.ok){const data=await r.json();assert.equal(data.service,"BARRAGE");healthy=true;break;}}
+            catch(err){console.log("Health retry:",err.message);}
+            await new Promise(resolve=>setTimeout(resolve,5000));
+          }
+          assert.ok(healthy,"New Worker must be healthy before Pages publishes");
+          const created=await fetch(url.replace(/\/$/,"")+"/api/rooms",{method:"POST"});
+          assert.equal(created.status,200,"Room creation should return HTTP 200");
+          const room=await created.json();
+          assert.match(room.code,/^[A-HJ-NP-Z2-9]{6}$/);
+          assert.ok(room.hostToken.length>30);
+          console.log("Smoke passed: health + fresh room",room.code);
+          JS
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend
+      - uses: actions/deploy-pages@v4
+        id: pages

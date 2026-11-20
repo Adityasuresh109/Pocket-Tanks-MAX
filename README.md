@@ -27,9 +27,13 @@ Host screen (TV) + phone controllers, destructible terrain with real hiding plac
 - **Secrets never go in files.** The Cloudflare API token lives in this repo's GitHub Actions secrets (Settings → Secrets and variables → Actions), set by the owner. If a workflow needs a secret name, document the *name* here — never a value.
 - **Don't touch other games.** Mafia, Puppet Panic, Two Rooms, DecryptIT, WTF Quiz and the AD Arcade hub live in their own repos and are out of scope here.
 
+## Current engineering notes
+
+The builder implementation is in [PR #2](../../pull/2). The latest authoritative implementation choices, measured test evidence and deployment prerequisites are in [BUILD_NOTES.md](BUILD_NOTES.md). The original brief remains the design reference; the owner's later discretion authorizes pragmatic differences documented in BUILD_NOTES.md. No acceptance check is signed off until the auditor independently verifies it.
+
 ## Status
 - [x] Design locked (2026-11-19)
 - [x] Build brief + audit checklist in repo
-- [ ] First build (builder)
-- [ ] Audit round 1 (auditor)
+- [x] First implementation build (builder; PR #2, pending independent live audit)
+- [ ] Audit round 1 (auditor — start after production/staging deployment)
 - [ ] Production ready + real-device rehearsal (≥4 phones + TV)

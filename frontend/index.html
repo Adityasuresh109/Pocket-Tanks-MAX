@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#080e18"><meta name="description" content="BARRAGE — a multiplayer artillery party game. 12 tanks. Two teams. One battlefield.">
+<title>BARRAGE | Pocket Tanks MAX</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+<script src="config.js"></script>
+<script type="module" src="main.js"></script>
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+<div class="shell">
+<header class="mast">
+ <div class="wordmark"><div class="mark" aria-hidden="true">✺</div><div><b>BARRAGE<span class="dot">.</span></b><small>THE ARTILLERY SOCIAL CLUB</small></div></div>
+ <div class="mast-actions"><span id="connection" class="connection"><span class="pulse"></span> READY TO DEPLOY</span><button id="sound" class="icon-button" title="Toggle sound" aria-label="Toggle sound">♫</button><button id="fullscreen" class="icon-button" title="Toggle fullscreen" aria-label="Toggle fullscreen">⛶</button></div>
+</header>
+<main id="app">
+<section id="landing" class="page">
+ <div class="hero-copy"><div class="eyebrow"><span class="star">✳</span> THE NEXT-GENERATION TANK PARTY</div><h1>FRIENDLY FIRE.<br><em>UNFRIENDLY</em><br>CONSEQUENCES.</h1><p>Take aim. Bend the wind. Blow up the battlefield. Recruit up to 12 friends for the most gloriously chaotic artillery showdown your living room has ever seen.</p>
+ <div class="hero-actions"><button class="btn btn-gold" id="create">HOST A BATTLE <span>↗</span></button><button class="btn btn-outline" id="showJoin">JOIN WITH CODE →</button></div>
+ <div class="stats-strip"><span><b>12</b><small>PLAYERS</small></span><i></i><span><b>2</b><small>TEAMS</small></span><i></i><span><b>∞</b><small>GRUDGES</small></span></div>
+ </div>
+ <div class="hero-art"><div class="preview-label">001 / THE FORTS <span>● LIVE SIMULATION</span></div><canvas id="preview" width="1280" height="720" aria-label="Preview of the tank battlefield"></canvas><div class="art-caption"><span>PRECISION IS A WEAPON.</span><span>SO IS LUCK.</span></div></div>
+</section>
+<section id="join" class="page hidden">
+ <div class="center-panel"><div class="eyebrow">YOUR BATTLE AWAITS</div><h2>ENLIST YOURSELF<span class="dot">.</span></h2><p>Enter the six-character room code on the big screen, then choose a name your enemies will remember.</p>
+ <form id="joinForm" autocomplete="off"><label for="roomCode">ROOM CODE</label><input id="roomCode" maxlength="6" pattern="[A-Za-z0-9]{6}" placeholder="ABC123" autocapitalize="characters" required><label for="playerName">CALLSIGN</label><input id="playerName" maxlength="20" placeholder="Your legendary nickname" required><button type="submit" class="btn btn-gold">JOIN THE BATTLE <span>→</span></button></form>
+ <button class="text-button" id="backHome">← BACK TO HOME</button></div>
+</section>
+<section id="host" class="page hidden">
+ <div class="host-layout">
+  <div class="battle-col">
+   <div class="battle-top"><div><div class="eyebrow" id="hostTopLabel">BATTLEFIELD / WAITING ROOM</div><h2 id="hostHeading">Gather your squad.</h2></div><div class="timer-ring" id="timerPill">LOBBY</div></div>
+   <div class="battle-wrap"><canvas id="battlefield" width="1280" height="720" aria-label="Live artillery battlefield"></canvas><div id="stageBanner" class="stage-banner hidden"></div><div id="volleyOverlay" class="volley-overlay hidden">INCOMING!</div></div>
+   <div class="battle-footer"><span id="fieldCaption">THE FORTS / 12 TANK POSITIONS</span><span id="turnWind">WIND · CALM</span></div>
+  </div>
+  <aside class="side-panel" id="hostSide"></aside>
+ </div>
+</section>
+<section id="player" class="page hidden"><div class="phone-shell" id="phoneContent"></div></section>
+</main>
+<footer class="footer"><span>AD ARCADE // BARRAGE</span><span>BUILT FOR FRIENDLY RIVALRIES</span><span id="version">EARLY ACCESS / R1</span></footer>
+</div>
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+</body>
+</html>
