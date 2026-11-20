@@ -232,7 +232,14 @@ export class BarrageRoom {
  async fire(){
   const r=this.room;if(r.phase!=="aim"||r.paused)return;
   r.phase="replay";r.deadline=0;await this.ctx.storage.deleteAlarm();
-  const shots=this.firing().filter(p=>p.locked).map(p=>({playerId:p.id,...p.aim}));
+  const primaries=this.firing().filter(p=>p.locked).map(p=>({playerId:p.id,...p.aim}));
+  // Twinshot Finale: from turn 28, every surviving locked tank gets a
+  // complimentary standard shell at a 2-degree offset. Damage still caps at
+  // 40 HP per target per volley; no extra inventory is consumed.
+  const echoes=r.turnIndex>=28?primaries.map(s=>({
+   playerId:s.playerId,weapon:"single",angle:Math.max(0,Math.min(180,s.angle+(s.angle<=90?2:-2))),power:s.power
+  })):[];
+  const shots=[...primaries,...echoes];
   for(const s of shots){const p=r.players.find(p=>p.id===s.playerId);if(s.weapon!=="single"&&p.inventory[s.weapon]>0)p.inventory[s.weapon]--;p.stats.shots++;}
   const before=r.players.map(p=>({id:p.id,hp:p.hp,alive:p.alive}));
   const seed=(r.seed+r.match*1009+r.turnIndex*19)>>>0;
