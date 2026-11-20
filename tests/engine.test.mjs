@@ -55,14 +55,19 @@ test("fastest rail shot hits a 12px ROCK wall instead of tunnelling through",()=
  assert.ok(result.grid[145*CW+75]>=2,"Rock cannot be erased by one impact.");
 });
 
-test("three impacts remove ROCK, whereas CONCRETE is indestructible",()=>{
+test("ROCK lasts three impacts, CONCRETE withstands all four",()=>{
  const g=empty();
- for(let row=100;row<121;row++)for(let col=75;col<82;col++)g[row*CW+col]=2;
- for(let row=100;row<121;row++)g[row*CW+90]=3;
- const players=[tank("a",0,170,440),tank("enemy",1,1100,440)];
- // Material durability is checked independently from outcomes at an unreachable position.
- assert.ok(g.some(cell=>cell===2));
- assert.ok(g.some(cell=>cell===3));
+ for(let row=150;row<CH;row++)for(let col=0;col<CW;col++)g[row*CW+col]=1;
+ for(let row=135;row<150;row++)for(let col=75;col<78;col++)g[row*CW+col]=2;
+ for(let row=135;row<150;row++)for(let col=90;col<93;col++)g[row*CW+col]=3;
+ const rock=145*CW+75,concrete=145*CW+90;
+ let current=g;
+ for(const expected of [4,5,0,0]){
+  const r=simulateVolley({grid:current,players:[tank("s",0,150,588),tank("e",1,1000,588)],shots:[{playerId:"s",angle:0,power:100,weapon:"rail"}],seed:1});
+  current=r.grid;
+  assert.equal(current[rock],expected);
+  assert.equal(current[concrete],3);
+ }
 });
 
 test("identical initial inputs, wind and seed produce bit-identical volleys",()=>{
