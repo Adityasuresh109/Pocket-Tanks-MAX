@@ -90,3 +90,29 @@ test("Twinshot Finale fires a free Single Shot after turn 16 without double char
   assert.ok(prior.hp-p.hp<=40,"Per-volley cap must hold even for twin shots");
  }
 });
+
+test("Sudden Death redeploys all remaining teams at turn 30 without changing HP, inventories or team assignments",async()=>{
+ const r=await room(6);await r.startMatch();
+ const original=new Map(r.room.players.map(p=>[p.id,{hp:p.hp,team:p.team,inventory:JSON.stringify(p.inventory)}]));
+ for(let i=0;i<30;i++){await r.fire();await r.alarm();}
+ assert.equal(r.room.turnIndex,30);
+ assert.equal(r.room.converged,true);
+ assert.equal(r.room.phase,"aim");
+ assert.equal(r.room.grid[100*CW+80],0,"open firing sky");
+ assert.equal(r.room.grid[160*CW+80],1,"solid flat dirt arena");
+ for(const side of [0,1]){
+  const positions=r.room.players.filter(p=>p.team===side&&p.alive).map(p=>p.x).sort((a,b)=>a-b);
+  assert.ok(positions.every(x=>x>=300&&x<=980));
+  for(let i=1;i<positions.length;i++)assert.ok(positions[i]-positions[i-1]>=50);
+ }
+ for(const p of r.room.players){
+  const old=original.get(p.id);
+  assert.equal(p.hp,old.hp);assert.equal(p.team,old.team);
+  assert.equal(JSON.stringify(p.inventory),old.inventory);
+  assert.equal(p.y,588);assert.equal(p.buried,false);
+ }
+ const moved=r.room.players.map(p=>p.x);
+ await r.fire();await r.alarm();
+ assert.equal(r.room.converged,true);
+ assert.deepEqual(r.room.players.map(p=>p.x),moved,"Sudden Death must not teleport every turn");
+});
