@@ -23,21 +23,25 @@ const at=(g,x,y)=>{const i=Math.floor(x/CELL),j=Math.floor(y/CELL);return i<0||i
 const set=(g,x,y,v)=>{if(x>=0&&x<CW&&y>=0&&y<CH)g[y*CW+x]=v;};
 const clamp=(n,lo,hi)=>Math.max(lo,Math.min(hi,n));
 export function baseHeight(x,map="forts"){
- const wave=19*Math.sin(x/74)+12*Math.sin(x/32);
+ const mirrorX=Math.min(x,WIDTH-x);
+ const wave=19*Math.sin(mirrorX/74)+12*Math.sin(mirrorX/32);
  if(map==="canyon")return 490+wave-135*Math.exp(-(((x-640)/185)**4));
  if(map==="hollow")return 495+wave-168*Math.exp(-(((x-640)/240)**2));
  return 475+wave-132*Math.exp(-(((x-640)/178)**2));
 }
 export function generate(map="forts",seed=1){
- const g=new Uint8Array(CW*CH),rand=rng(seed);
- for(let i=0;i<CW;i++){const x=i*CELL,top=Math.floor(baseHeight(x,map)/CELL);
-  for(let j=top;j<CH;j++)g[j*CW+i]=(j>top+36&&rand()<.25)?2:1;
+ const g=new Uint8Array(CW*CH);
+ for(let i=0;i<CW;i++){const x=i*CELL+CELL/2,top=Math.floor(baseHeight(x,map)/CELL);
+  for(let j=top;j<CH;j++){
+   const sym=Math.min(i,CW-1-i),h=(Math.imul(sym+1,73856093)^Math.imul(j+1,19349663)^seed)>>>0;
+   g[j*CW+i]=(j>top+36&&((h^(h>>>13))%100)<25)?2:1;
+  }
  }
  const rect=(x1,y1,x2,y2,m)=>{for(let y=Math.floor(y1/CELL);y<=Math.floor(y2/CELL);y++)for(let x=Math.floor(x1/CELL);x<=Math.floor(x2/CELL);x++)set(g,x,y,m);};
  for(let side=0;side<2;side++){const mx=x=>side?WIDTH-x:x;
   if(map==="forts"){
    const left=Math.min(mx(210),mx(275)),right=Math.max(mx(210),mx(275)),ground=baseHeight(mx(242),map);
-   rect(left,ground-83,right,ground-70,3);rect(side?left:right-9,ground-83,side?left+9:right,ground-10,3);
+   rect(left,ground-83,right,ground-70,3);rect(side?right-9:left,ground-83,side?right:left+9,ground-10,3);
    rect(Math.min(mx(350),mx(375)),baseHeight(mx(360),map)-55,Math.max(mx(350),mx(375)),baseHeight(mx(360),map)-6,2);
   }else if(map==="canyon"){
    const x=mx(330),ground=baseHeight(x,map);rect(x-10,ground-110,x+10,ground-5,2);
