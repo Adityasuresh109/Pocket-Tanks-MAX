@@ -76,7 +76,7 @@ function carve(g,cx,cy,r,kind,tanks){
   if(x<0||x>=CW||y<0||y>=CH||Math.hypot(x*CELL+2-cx,y*CELL+2-cy)>r)continue;
   const ix=y*CW+x,m=g[ix];
   if(kind==="dirt"){if(m===0&&!tanks.some(t=>t.alive&&Math.abs(t.x-(x*CELL+2))<24&&Math.abs(t.y-(y*CELL+2))<16))g[ix]=1;}
-  else if(m===1)g[ix]=0;else if(m===2)g[ix]=kind==="excavator"?1:0;
+  else if(m===1)g[ix]=0;else if(m===2)g[ix]=4;else if(m===4)g[ix]=5;else if(m===5)g[ix]=0;
  }
 }
 function settle(g,tanks,totals){
@@ -154,7 +154,16 @@ export function simulateVolley({grid,players,shots,wind=0,seed=1}){
     if(p.x<0||p.x>=WIDTH||p.y<0){p.alive=false;continue;}
     let hitTank=tanks.find(k=>k.alive&&k.id!==p.owner&&Math.abs(k.x-p.x)<22&&Math.abs(k.y-p.y)<12);
     if(hitTank){detonate(p,t);continue;}
-    const m=at(g,p.x,p.y);
+    // Swept collision: sample every 2 px along this timestep, including fast Rail Slugs.
+    // This prevents thin walls from being skipped between 120 Hz samples.
+    const distance=Math.hypot(p.x-lastX,p.y-lastY),segments=Math.max(1,Math.ceil(distance/2));
+    let encountered=0;
+    for(let k=1;k<=segments;k++){
+     const q=k/segments,px=lastX+(p.x-lastX)*q,py=lastY+(p.y-lastY)*q;
+     const material=at(g,px,py);
+     if(material){p.x=px;p.y=py;encountered=material;break;}
+    }
+    const m=encountered;
     if(m){
      if(p.kind==="mole"&&m===1){p.mode="burrow";const len=Math.hypot(p.vx,p.vy)||1;p.vx=p.vx/len*420;p.vy=p.vy/len*420;continue;}
      if(p.kind==="roller"){p.mode="roll";p.x=lastX;p.y=surfaceBelow(g,p.x,Math.max(0,lastY-12))-4;p.vx=Math.sign(p.vx)*Math.max(120,Math.abs(p.vx)*.55);continue;}
