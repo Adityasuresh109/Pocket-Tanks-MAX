@@ -44,7 +44,7 @@ export class BarrageRoom {
  sendHost(payload){for(const ws of this.connections().filter(s=>this.attachment(s).role==="host"))this.message(ws,payload);}
  error(ws,detail){this.message(ws,{type:"error",message:detail});}
  active(){return this.room?.players.filter(p=>p.alive)||[];}
- // From turn 26 onward, all remaining tanks fire together.
+ // From turn 20 onward, all remaining tanks fire together.
  isActiveFirer(p){
   const r=this.room;
   return !!(p?.alive&&p.team===r.turn.team&&(r.turn.squad===2||p.squad===r.turn.squad));
@@ -214,7 +214,7 @@ export class BarrageRoom {
   r.phase="aim";r.paused=false;r.reason="";r.lastVolley=null;
   const team=r.turn.team;
   let squad=r.nextSquad[team];
-  if(r.turnIndex>=26){
+  if(r.turnIndex>=20){
    squad=2; // FINAL BARRAGE: all surviving tanks fire every team turn.
   }else{
    if(!r.players.some(p=>p.alive&&p.team===team&&p.squad===squad))squad=1-squad;
