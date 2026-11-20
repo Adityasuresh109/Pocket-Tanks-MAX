@@ -72,3 +72,21 @@ test("Bouncer produces exactly two ricochets then explodes on the third ground h
  assert.equal(r.events.filter(e=>e.type==="boom").length,1);
  assert.ok(r.events[2].t>r.events[1].t&&r.events[1].t>r.events[0].t);
 });
+
+test("Twinshot Finale fires a free Single Shot after turn 28 without double charging inventory or exceeding damage cap",async()=>{
+ const r=await room(2);await r.startMatch();
+ const shooter=r.room.players.find(p=>p.team===0&&p.squad===0);
+ r.room.turnIndex=28;r.room.turn={team:0,squad:2};
+ const hadBertha=shooter.inventory.bertha||0;
+ shooter.aim={angle:45,power:65,weapon:hadBertha?"bertha":"single"};shooter.locked=true;
+ const before=r.room.players.map(p=>({id:p.id,hp:p.hp}));
+ await r.fire();
+ assert.equal(r.room.lastVolley.shots.length,2);
+ assert.equal(r.room.lastVolley.shots[1].weapon,"single");
+ assert.equal(r.room.lastVolley.shots[0].playerId,r.room.lastVolley.shots[1].playerId);
+ if(hadBertha)assert.equal(shooter.inventory.bertha,hadBertha-1);
+ for(const p of r.room.players){
+  const prior=before.find(x=>x.id===p.id);
+  assert.ok(prior.hp-p.hp<=40,"Per-volley cap must hold even for twin shots");
+ }
+});
