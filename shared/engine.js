@@ -26,7 +26,7 @@ export function baseHeight(x,map="forts"){
  const wave=19*Math.sin(x/74)+12*Math.sin(x/32);
  if(map==="canyon")return 490+wave-135*Math.exp(-(((x-640)/185)**4));
  if(map==="hollow")return 495+wave-168*Math.exp(-(((x-640)/240)**2));
- return 475+wave-132*Math.exp(-((x-640)/178)**2);
+ return 475+wave-132*Math.exp(-(((x-640)/178)**2));
 }
 export function generate(map="forts",seed=1){
  const g=new Uint8Array(CW*CH),rand=rng(seed);
