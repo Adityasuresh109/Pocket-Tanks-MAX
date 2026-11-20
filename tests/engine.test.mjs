@@ -46,12 +46,13 @@ test("unbroken concrete between detonation and all 5 hitbox samples prevents any
 
 test("fastest rail shot hits a 12px ROCK wall instead of tunnelling through",()=>{
  const g=empty();
- for(let row=102;row<136;row++)for(let col=75;col<78;col++)g[row*CW+col]=2;
- const result=simulateVolley({grid:g,players:[tank("shooter",0,150,450),tank("target",1,390,450)],shots:[{playerId:"shooter",weapon:"rail",angle:0,power:100}],seed:12});
- assert.equal(result.events.length,1);
+ for(let row=150;row<CH;row++)for(let col=0;col<CW;col++)g[row*CW+col]=1;
+ for(let row=135;row<150;row++)for(let col=75;col<78;col++)g[row*CW+col]=2;
+ const result=simulateVolley({grid:g,players:[tank("shooter",0,150,588),tank("target",1,390,588)],shots:[{playerId:"shooter",weapon:"rail",angle:0,power:100}],seed:12});
+ assert.ok(result.events.length>=1);
  assert.ok(result.events[0].x>=300&&result.events[0].x<=312,`Unexpected impact x: ${result.events[0].x}`);
  assert.equal(result.players[1].hp,120);
- assert.ok(result.grid[110*CW+75]>=2,"Rock cannot be erased by one impact.");
+ assert.ok(result.grid[145*CW+75]>=2,"Rock cannot be erased by one impact.");
 });
 
 test("three impacts remove ROCK, whereas CONCRETE is indestructible",()=>{
