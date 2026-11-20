@@ -153,7 +153,7 @@ export class BarrageRoom {
   }
   else if(action==="start"&&r.phase==="lobby"){if(!this.balanced())return this.error(ws,"Teams need at least one player each and must be balanced.");await this.startMatch();return;}
   else if(action==="pause"&&r.phase==="aim"){r.paused=!r.paused;if(r.paused){r.remaining=r.deadline?Math.max(0,r.deadline-Date.now()):0;r.deadline=0;r.reason="Host paused the game.";}else{r.reason="";r.deadline=r.settings.timer?Date.now()+Math.max(1000,r.remaining):0;await this.arm();}}
-  else if(action==="skip"&&r.phase==="aim"){await this.advance();return;}
+  else if(action==="skip"&&r.phase==="aim"){r.turnIndex++;await this.advance();return;}
   else if(action==="force"&&r.phase==="aim"){await this.fire();return;}
   else if(action==="restartVolley"&&r.phase==="aim"){for(const p of this.firing()){p.locked=false;p.aim=null;}r.deadline=r.settings.timer?Date.now()+r.settings.timer*1000:0;await this.arm();}
   else if(action==="end"&&["aim","replay"].includes(r.phase)){await this.finish(1-r.turn.team,true);return;}
