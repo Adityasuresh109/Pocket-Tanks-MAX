@@ -140,7 +140,7 @@ export class BarrageRoom {
     const step=Math.max(-8,Math.min(8,Number(data.dx)||0));
     const result=moveTank(r.grid,r.players,p.id,step,p.fuel);p.fuel=Math.max(0,p.fuel-result.moved);await this.save();this.update();
    }
-   else if(data.type==="lock"&&p&&r.phase==="aim"&&!r.paused&&p.alive&&p.team===r.turn.team&&p.squad===r.turn.squad){
+   else if(data.type==="lock"&&p&&r.phase==="aim"&&!r.paused&&this.isActiveFirer(p)){
     p.aim=p.aim||sanitize({angle:45,power:55,weapon:"single"});const weapon=p.aim.weapon;
     if(weapon!=="single"&&!(p.inventory[weapon]>0))return this.error(ws,"You're out of that weapon. Select another.");
     p.locked=!!data.locked;await this.save();this.update();
