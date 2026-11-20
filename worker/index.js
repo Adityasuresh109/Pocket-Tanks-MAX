@@ -14,7 +14,7 @@ export default {
  async fetch(request,env){
   const url=new URL(request.url),path=url.pathname;
   if(request.method==="OPTIONS")return new Response(null,{status:204,headers:{"access-control-allow-origin":"*","access-control-allow-headers":"content-type","access-control-allow-methods":"GET,POST,OPTIONS"}});
-  if(path==="/health")return json({ok:true,service:"BARRAGE",version:"r3"});
+  if(path==="/health")return json({ok:true,service:"BARRAGE",version:"r4"});
   if(path==="/api/rooms"&&request.method==="POST"){
    // 6-char codes have ample entropy for ephemeral party rooms. Retry if ever allocated.
    for(let i=0;i<5;i++){
@@ -72,9 +72,17 @@ export class BarrageRoom {
     if(this.room.phase==="aim"&&this.isActiveFirer(p)){
      view.squadAim=this.room.players.filter(t=>this.isActiveFirer(t)).map(t=>({id:t.id,name:t.name,locked:t.locked,...(t.aim?{angle:t.aim.angle,power:t.aim.power,weapon:t.aim.weapon}:{})}));
     }
-   }else{
-    // The host never sees private aim data during the aim phase.
+   }else if(auth.role==="host"){
+    // Owner-approved R4 visibility boundary: the TV may show live turret
+    // angles for the firing team, but never their selected power or weapon.
+    // Do not put this field on base/state: enemy phones and non-firing
+    // teammates must not receive it. Keep the full private squadAim as-is.
     view.you={role:"host"};
+    if(this.room.phase==="aim"){
+     view.turretAngles=this.room.players.filter(p=>this.isActiveFirer(p)).map(p=>({
+      id:p.id,angle:p.aim?.angle??(p.team===0?45:135)
+     }));
+    }
    }
    const epoch=this.attachment(ws).gridEpoch??-1;
    if(epoch===this.room.gridEpoch)view.grid=null;

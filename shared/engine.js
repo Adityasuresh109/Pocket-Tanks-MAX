@@ -251,7 +251,11 @@ export function simulateVolley({grid,players,shots,wind=0,seed=1}){
     p.vy+=(500-drag*mag*p.vy)*step;
     const lastX=p.x,lastY=p.y;p.x+=p.vx*step;p.y+=p.vy*step;
     if(p.kind==="splitter"&&!p.split&&p.vy>=0){p.alive=false;p.split=true;for(let i=-2;i<=2;i++){const a=Math.atan2(p.vy,p.vx)+i*(Math.PI/60);live.push({...p,id:serial++,x:p.x,y:p.y,vx:Math.cos(a)*Math.max(180,mag*.75),vy:Math.sin(a)*Math.max(180,mag*.75),split:true,alive:true,kind:"splitter"});}continue;}
-    if(p.x<0||p.x>=WIDTH||p.y<0){p.alive=false;continue;}
+    // The top of the visible arena is NOT a world boundary: steep shells
+    // arc into the sky, reach their apex, and fall back into the battlefield.
+    // Side exits may remain lost shots. The 8-second simulation cap still
+    // bounds flight lifetime, including projectiles that never return.
+    if(p.x<0||p.x>=WIDTH){p.alive=false;continue;}
     let hitTank=tanks.find(k=>k.alive&&(k.id!==p.owner||p.age>.075)&&Math.abs(k.x-p.x)<22&&Math.abs(k.y-p.y)<12);
     if(hitTank){detonate(p,t);continue;}
     // Swept collision: sample every 2 px along this timestep, including fast Rail Slugs.

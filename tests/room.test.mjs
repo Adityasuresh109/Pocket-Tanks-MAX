@@ -62,11 +62,26 @@ test("only firing-squad phones can receive aim and weapon data during aiming",as
  const last=ws=>ws.frames.filter(x=>x.type==="state").at(-1);
  assert.equal(last(ownWS).you.angle,71);
  assert.equal(last(mateWS).squadAim.find(p=>p.id===shooter.id).angle,71);
- for(const ws of [otherWS,enemyWS,hostWS]){
+ for(const ws of [otherWS,enemyWS]){
   assert.equal(last(ws).squadAim,undefined);
+  assert.equal(last(ws).turretAngles,undefined,"Angle is public only on the TV, not other phones");
   assert.ok(!JSON.stringify(last(ws)).includes('"angle":71'));
+  assert.ok(!JSON.stringify(last(ws)).includes('"power":63'));
   assert.ok(!JSON.stringify(last(ws)).includes('"weapon":"bertha"'));
  }
+ const hostState=last(hostWS);
+ assert.equal(hostState.squadAim,undefined);
+ assert.ok(hostState.turretAngles.some(t=>t.id===shooter.id&&t.angle===71));
+ assert.ok(!JSON.stringify(hostState).includes('"power":63'));
+ assert.ok(!JSON.stringify(hostState).includes('"weapon":"bertha"'));
+ assert.deepEqual(Object.keys(hostState.turretAngles.find(t=>t.id===shooter.id)).sort(),["angle","id"]);
+ // The TV changes immediately with each angle input, without waiting for lock-in.
+ await room.webSocketMessage(ownWS,JSON.stringify({type:"aim",angle:119,power:7,weapon:"rail"}));
+ assert.equal(last(hostWS).turretAngles.find(t=>t.id===shooter.id).angle,119);
+ assert.equal(last(enemyWS).turretAngles,undefined);
+ assert.equal(last(otherWS).turretAngles,undefined);
+ assert.ok(!JSON.stringify(last(hostWS)).includes('"power":7'));
+ assert.ok(!JSON.stringify(last(hostWS)).includes('"weapon":"rail"'));
 });
 test("skipping a stuck turn rotates to other team and host can pause/resume countdown",async()=>{
  const {room}=await roomWith(2);

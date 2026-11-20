@@ -51,10 +51,13 @@ test("combined-team secret aim is visible only to that team, never enemy or host
  const first=mk("player",team[0].id),second=mk("player",team[3].id),opponent=mk("player",enemy.id),host=mk("host","host");
  await r.webSocketMessage(first,JSON.stringify({type:"aim",angle:77,power:33,weapon:"bertha"}));
  assert.equal(second.message.squadAim.find(p=>p.id===team[0].id).angle,77);
- for(const ws of [opponent,host]){
-  assert.equal(ws.message.squadAim,undefined);
-  assert.ok(!JSON.stringify(ws.message).includes('"angle":77'));
- }
+ assert.equal(opponent.message.squadAim,undefined);
+ assert.equal(opponent.message.turretAngles,undefined);
+ assert.ok(!JSON.stringify(opponent.message).includes('"angle":77'));
+ assert.equal(host.message.squadAim,undefined);
+ assert.ok(host.message.turretAngles.some(p=>p.id===team[0].id&&p.angle===77));
+ assert.ok(!JSON.stringify(host.message).includes('"power":33'));
+ assert.ok(!JSON.stringify(host.message).includes('"weapon":"bertha"'));
 });
 test("Roller travels along the surface and detonates at the near lip of a trench",()=>{
  const g=plain();

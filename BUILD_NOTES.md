@@ -134,3 +134,26 @@ Twelve full simulated games use real Durable Object turn, inventory, lock, wind 
 ### Remaining release blockers
 
 Zuko must independently inspect endgame changes and verify the measurements. Mercy, Twinshot, the early squad merger and the Sudden Death arena are owner-facing deviations requiring review/acceptance. At least four actual phones plus a TV must complete a game. All 12-client live performance, real iOS Safari controls, full console sweep and match experience remain unverified until those tests occur. The auditor checklist is not changed by the builder.
+
+---
+
+## Build R4 — live turret angle and off-screen projectile feedback
+
+**Source:** Zuko's owner-approved player feedback in Issue #6. **Branch:** fix/r4-live-turrets-high-arcs-camera. **Production sign-off:** NOT yet.
+
+### Engine
+Previously, the 120 Hz simulator destroyed projectiles as soon as their Y coordinate became negative (crossed the top of the visible screen). Negative Y is now valid sky. Shells continue under gravity, drag and wind until they return and impact, leave a side boundary, or time out at the existing 8-second safety cap. The standard damage/collision/cover and 40 HP-per-volley limit are unchanged.
+
+New regressions fire 60°/100, 80°/100 and 70°/80 (the playtest failures), plus 90°/100, from an actual Forts spawn. Each must have exactly one explosion, at least two negative-Y trace frames, and a later in-frame trace point.
+
+### TV-only angle disclosure (owner-ratified exception)
+The authenticated host's state view now includes only `turretAngles: [{id,angle}]`, derived from the currently active firing team/squad while aiming. It updates on every phone aim input; lock-in is not required. Power, weapon and inventories remain private and absent from that field. Enemy and non-firing phones do not receive turretAngles; firing teammates still receive full private squadAim. Only the drawn barrel changes: the host cannot change any authoritative shot input.
+
+The host view's new exception modifies audit check 3: angle is public on the TV only, while power and weapon remain restricted to the active firing squad until shots fire. Two consecutive angle changes, host secrecy and enemy privacy are now regression tested.
+
+### Follow-the-shot TV camera
+A new, pure `frontend/camera.js` tracks the highest live projectile in the public volley trace, including those above y=0. The host camera smoothly pans toward high arcs and back down to the arena after a landing. The original fixed TV HUD remains visible, with a sky-tracking indicator while the camera is elevated. The landing-page preview is static. The deployment workflow also adds a revision query to this new script to prevent old cached code.
+
+### Auditor recheck
+Test the live host + two phones for immediate angle updates and absence of power/weapon leakage; fire all three steep lob combinations to confirm their trajectories leave and re-enter and visibly pan the TV. Real-device performance, the 12-player load and remaining audit checks still require independent testing. Do not declare the game production-ready based on automated engine tests alone.
+
