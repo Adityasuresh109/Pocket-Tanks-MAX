@@ -14,7 +14,7 @@ export default {
  async fetch(request,env){
   const url=new URL(request.url),path=url.pathname;
   if(request.method==="OPTIONS")return new Response(null,{status:204,headers:{"access-control-allow-origin":"*","access-control-allow-headers":"content-type","access-control-allow-methods":"GET,POST,OPTIONS"}});
-  if(path==="/health")return json({ok:true,service:"BARRAGE",version:"r3"});
+  if(path==="/health")return json({ok:true,service:"BARRAGE",version:"r4"});
   if(path==="/api/rooms"&&request.method==="POST"){
    // 6-char codes have ample entropy for ephemeral party rooms. Retry if ever allocated.
    for(let i=0;i<5;i++){
