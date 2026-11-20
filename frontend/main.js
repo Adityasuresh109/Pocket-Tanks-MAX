@@ -1,5 +1,6 @@
 
 import {generate,spawn,decode,WIDTH,HEIGHT,CELL,CW,CH,WEAPONS} from "./shared/engine.js";
+import {cameraTargetForTrace} from "./camera.js";
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const args=new URLSearchParams(location.search), SERVER=(window.BARRAGE_WORKER_URL||"https://pocket-tanks-max.adityasuresh2110.workers.dev").replace(/\/$/,""),WS=SERVER.replace(/^http/,"ws");
@@ -8,6 +9,7 @@ const team=n=>n===0?"RED":"BLUE",turnLabel=r=>r.converged?team(r.turn.team)+" / 
 let role="",code="",secret="",seatId="",state=null,ws=null,retry=0,reconnectTimer=0,roomFailed=false;
 let localAim={angle:45,power:60,weapon:"single"},controlKey="",grid=null,terrainBitmap=null,terrainRef=null;
 let muted=localStorage.getItem("barrage-muted")==="yes",audio=null,playback=null,seenVolley=-1,drawTime=0;
+let cameraRise=0,lastCameraFrame=0;
 const previewGrid=generate("forts",7),previewTanks=Array.from({length:12},(_,i)=>{const side=i>=6?1:0,p=spawn(previewGrid,side,i%6+1);return {id:String(i),name:["NOVA","GHOST","ECHO","JINX","BOLT","MARS","HEX","ATOM","PIXEL","BOOM","FLUX","ONYX"][i],team:side,...p,hp:120,alive:true};});
 function show(name){for(const p of ["landing","join","host","player"])$(p).classList.toggle("hidden",name!==p);}
 function notice(text){const t=$("toast");t.textContent=text;t.classList.remove("hidden");clearTimeout(notice.timer);notice.timer=setTimeout(()=>t.classList.add("hidden"),4300);}
@@ -146,25 +148,38 @@ function terrainImage(g){
  const canvas=document.createElement("canvas");canvas.width=CW;canvas.height=CH;const context=canvas.getContext("2d"),pixels=context.createImageData(CW,CH),pal=[[0,0,0,0],[85,101,80,255],[114,122,132,255],[129,151,170,255]];
  for(let i=0;i<g.length;i++){const v=g[i],p=pal[v]||pal[2],variation=((i*9127+31)>>>4)%23-11;for(let k=0;k<3;k++)pixels.data[4*i+k]=Math.max(0,p[k]+variation);pixels.data[4*i+3]=p[3];}context.putImageData(pixels,0,0);return canvas;
 }
-function drawTank(c,p){
+function drawTank(c,p,liveAngle){
  c.save();c.translate(p.x,p.y);
  if(!p.alive){c.fillStyle="#1d2734";c.fillRect(-18,2,36,7);c.fillStyle="#d8b19a";c.font="21px Arial";c.fillText("×",-5,-7);c.restore();return;}
  const color=p.team===0?"#ed756c":"#65baf1";c.shadowColor=color;c.shadowBlur=17;c.fillStyle=color;c.strokeStyle="#152031";c.lineWidth=2;
  c.beginPath();c.roundRect(-23,-7,46,21,5);c.fill();c.stroke();c.shadowBlur=0;c.fillStyle="#172539";c.beginPath();c.roundRect(-22,6,44,9,4);c.fill();
  c.fillStyle="#bfc9d2";for(let dx=-12;dx<=12;dx+=12){c.beginPath();c.arc(dx,10,4,0,7);c.fill();}
- c.fillStyle=color;c.beginPath();c.roundRect(-12,-15,24,14,6);c.fill();c.save();c.translate(0,-10);c.rotate(p.team===0?-.65:-2.5);c.fillStyle="#b9ccdc";c.fillRect(0,-3,29,6);c.restore();
+ c.fillStyle=color;c.beginPath();c.roundRect(-12,-15,24,14,6);c.fill();c.save();c.translate(0,-10);c.rotate(-(liveAngle??(p.team===0?45:135))*Math.PI/180);c.fillStyle="#b9ccdc";c.fillRect(0,-3,29,6);c.restore();
  c.textAlign="center";c.fillStyle="#fff9e6";c.shadowColor="#000";c.shadowBlur=5;c.font="bold 15px Arial";c.fillText((p.name||"TANK").slice(0,12),0,-31);c.shadowBlur=0;
  c.fillStyle="#101d2d";c.fillRect(-24,-25,48,6);c.fillStyle=color;c.fillRect(-23,-24,46*p.hp/120,4);if(p.buried){c.font="bold 12px Arial";c.fillStyle="#f7d78d";c.fillText("BURIED",0,-45);}c.restore();
 }
-function drawScene(canvas,g,tanks,play,now,mini=false,map="forts"){
- const c=canvas.getContext("2d");c.clearRect(0,0,WIDTH,HEIGHT);
- const sky=c.createLinearGradient(0,0,0,HEIGHT);sky.addColorStop(0,"#0d1e33");sky.addColorStop(.65,"#284962");sky.addColorStop(1,"#64727a");c.fillStyle=sky;c.fillRect(0,0,WIDTH,HEIGHT);
+function followCamera(play,now){
+ const elapsed=play?Math.max(0,(now-play.start)/1000):-1;
+ const wanted=play?cameraTargetForTrace(play.data.trace,elapsed):0;
+ const dt=lastCameraFrame?Math.min(.06,Math.max(0,(now-lastCameraFrame)/1000)):1/60;
+ lastCameraFrame=now;
+ cameraRise+=(wanted-cameraRise)*(1-Math.exp(-dt*(wanted>cameraRise?12:6)));
+ if(cameraRise<.15)cameraRise=0;
+ return cameraRise;
+}
+function drawScene(canvas,g,tanks,play,now,mini=false,map="forts",turretAngles=[]){
+ const c=canvas.getContext("2d");
+ c.clearRect(0,0,WIDTH,HEIGHT);
+ c.fillStyle="#0d1e33";c.fillRect(0,0,WIDTH,HEIGHT);
+ const cameraY=mini?0:followCamera(play,now);
+ c.save();
+ c.translate(0,cameraY);
+ const sky=c.createLinearGradient(0,-940,0,HEIGHT);sky.addColorStop(0,"#061120");sky.addColorStop(.57,"#0d1e33");sky.addColorStop(.81,"#284962");sky.addColorStop(1,"#64727a");c.fillStyle=sky;c.fillRect(0,-1000,WIDTH,HEIGHT+1000);
  const glow=c.createRadialGradient(642,237,5,642,237,350);glow.addColorStop(0,"#f0d59855");glow.addColorStop(1,"#f0d59800");c.fillStyle=glow;c.fillRect(0,0,WIDTH,HEIGHT);
  c.fillStyle="#e4c99b99";c.beginPath();c.arc(642,239,39,0,7);c.fill();
- for(let i=0;i<115;i++){const x=(i*137.7+43)%WIDTH,y=(i*79.3)%360;c.fillStyle="rgba(255,241,205,"+(.1+i%7*.015)+")";c.fillRect(x,y,i%10?1:2,i%10?1:2);}
+ for(let i=0;i<180;i++){const x=(i*137.7+43)%WIDTH,y=(i*79.3)%1400-960;c.fillStyle="rgba(255,241,205,"+(.1+i%7*.015)+")";c.fillRect(x,y,i%10?1:2,i%10?1:2);}
  for(let z=0;z<3;z++){c.fillStyle=["#304b60","#283f52","#21384a"][z];c.beginPath();c.moveTo(0,HEIGHT);for(let x=0;x<=WIDTH;x+=20)c.lineTo(x,418+z*45+36*Math.sin(x/(65+z*21)+z)+18*Math.cos(x/39+z));c.lineTo(WIDTH,HEIGHT);c.fill();}
  if(g){if(terrainRef!==g||!terrainBitmap){terrainRef=g;terrainBitmap=terrainImage(g);}c.imageSmoothingEnabled=false;c.drawImage(terrainBitmap,0,0,WIDTH,HEIGHT);c.imageSmoothingEnabled=true;}
- c.fillStyle="#07132266";c.fillRect(0,0,WIDTH,51);c.fillStyle="#f8d69c";c.font="bold 17px Arial";c.textAlign="left";c.fillText(map.toUpperCase()+" / BARRAGE",21,32);c.textAlign="right";c.fillStyle="#a8c5d3";c.fillText("AD ARCADE / NO MERCY",1255,32);
  let actors=tanks;if(play){const t=Math.max(0,(now-play.start)/1000),v=play.data;actors=t<v.duration+.2?play.before:play.after;
   for(const point of v.trace||[]){const [time,id,x,y,kind]=point;if(time>t||time<t-.47)continue;c.globalAlpha=.6*(1-(t-time)/.47);c.fillStyle=WEAPONS[kind]?.color||"#fff";c.beginPath();c.arc(x,y,4,0,7);c.fill();}c.globalAlpha=1;
   const active=new Map();for(const point of v.trace||[])if(point[0]<=t)active.set(point[1],point);
@@ -182,13 +197,24 @@ function drawScene(canvas,g,tanks,play,now,mini=false,map="forts"){
    c.fillStyle=rad;c.beginPath();c.arc(e.x,e.y,radius,0,7);c.fill();
   }
  }
- for(const p of actors||[])drawTank(c,p);
+ const angles=new Map(turretAngles.map(item=>[item.id,item.angle]));
+ for(const p of actors||[])drawTank(c,p,angles.get(p.id));
  if(mini){const x=640+Math.cos(now/1000)*190,y=254-Math.abs(Math.sin(now/950))*125;c.shadowColor="#f7d477";c.shadowBlur=22;c.fillStyle="#ffe1a0";c.beginPath();c.arc(x,y,6,0,7);c.fill();c.shadowBlur=0;}
+ c.restore();
+ // Fixed TV HUD remains readable even when the camera pans above the arena.
+ c.fillStyle="#071322ad";c.fillRect(0,0,WIDTH,51);
+ c.fillStyle="#f8d69c";c.font="bold 17px Arial";c.textAlign="left";
+ c.fillText(map.toUpperCase()+" / BARRAGE",21,32);
+ c.textAlign="right";c.fillStyle="#a8c5d3";c.fillText("AD ARCADE / NO MERCY",1255,32);
+ if(cameraY>38&&!mini){
+  c.fillStyle="#f3c86a";c.font="bold 17px Arial";c.textAlign="center";
+  c.fillText("▲ TRACKING HIGH-ARC VOLLEY · CAMERA UP "+Math.round(cameraY)+" PX",WIDTH/2,HEIGHT-29);
+ }
 }
 function frame(now){
  if(now-drawTime>15){drawTime=now;
   if(!$("landing").classList.contains("hidden"))drawScene($("preview"),previewGrid,previewTanks,null,now,true);
-  if(role==="host"&&state&&!$("host").classList.contains("hidden"))drawScene($("battlefield"),grid||previewGrid,state.players,playback,now,false,state.converged?"SUDDEN DEATH ARENA":MAPS[state.map]);
+  if(role==="host"&&state&&!$("host").classList.contains("hidden"))drawScene($("battlefield"),grid||previewGrid,state.players,playback,now,false,state.converged?"SUDDEN DEATH ARENA":MAPS[state.map],state.phase==="aim"?state.turretAngles||[]:[]);
   if(state?.phase==="aim"&&!state.paused){if(role==="host")$("timerPill").textContent=seconds()===null?"∞":seconds()+"S";const clock=$("phoneClock");if(clock)clock.textContent=(seconds()??"∞")+" SEC";}
   if(playback&&state?.phase==="replay"&&now-playback.start>(playback.data.duration+1.5)*1000)$("volleyOverlay").classList.add("hidden");
  }
