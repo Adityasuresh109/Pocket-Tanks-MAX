@@ -53,6 +53,8 @@ export function generate(map="forts",seed=1){
    rect(left,ground+67,right,ground+75,3);
   }
  }
+ // Exact material mirroring avoids 4px grid-quantization bias between teams.
+ for(let y=0;y<CH;y++)for(let x=0;x<CW/2;x++)g[y*CW+(CW-1-x)]=g[y*CW+x];
  // Preserve concrete-only border as a collision rule, rather than cells.
  return g;
 }
