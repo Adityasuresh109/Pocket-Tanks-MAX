@@ -1,7 +1,6 @@
 # BARRAGE — Build R1 implementation notes
 
-**Branch:** `build/r1-playable-foundation`  
-**Status:** Implemented foundation; NOT production-ready; awaits GitHub Actions, live Worker, real-browser and auditor checks.
+**R1:** merged via PR #2 (`4f809cb`) and independently audited. **R2:** merged via PR #3 (`8d8d1b3e`), independently audited. **R3:** awaiting independent Zuko review. **Production readiness:** NOT YET SIGNED OFF.
 
 ## Source and deployment
 
@@ -63,7 +62,7 @@ npx wrangler@4 deploy --config worker/wrangler.toml --dry-run
 
 ## Build R2 — response to Zuko's independent AUDIT R1 report
 
-**Branch:** fix/r2-audit-gameplay. **Review:** PR to be opened. **Status:** code and regression tests; live auditor sign-off outstanding.
+**R2 history:** merged via PR #3 (`8d8d1b3e`). Zuko verified most R2 fixes. Remaining pacing and Roller/Bouncer issues addressed in R3 below.
 
 ### Implemented in this round
 1. **Spawns:** slots S1–S6 separated by 90/90/90/85/85 px on both teams, with map-specific Forts bunker roofs, rock mesa and trench; Canyon pillars/ledges; Hollow diggable tunnel pockets and concrete supports. Terrain cells remain exactly mirrored after generation. Original 56px line-spawn removed.
@@ -86,3 +85,52 @@ npx wrangler@4 deploy --config worker/wrangler.toml --dry-run
 - No full 12-client live Wi-Fi test, iOS Safari phone test, or four-device/TV rehearsal yet.
 - Outcome of live release and Zuko re-audit must be independently checked; code passing locally is not a final product.
 
+
+---
+
+## Build R3 — response to Zuko's AUDIT R2 and Issue #4
+
+**Review:** PR #5. **Status:** builder verification; independent R3 audit and owner device tests pending.
+
+### Deliberate design changes — for owner and auditor review
+
+1. **Starting team alternates** by match in a series: Red / Blue / Red.
+2. **Final Barrage from turn 16:** after four full cycles of ordinary Red A → Blue A → Red B → Blue B squad turns, all surviving tanks on a team fire together on that team's turn. Aim visibility remains limited to the active team; enemies and host never receive unlocked/locked aim before the volley.
+3. **Twinshot Finale from turn 16:** each locked player fires a selected primary and one free echo shell offset by 2°. A Bertha primary generates a Bertha echo; other primaries generate a Single Shot echo. Only the primary uses inventory. Direct damage remains max 30, **per-target per-volley cap remains 40 HP**, including echoes and fall damage.
+4. **Graduated mercy victory:** after turn 24, a ≥360 HP lead and ≥2 alive lead wins; after turn 27, ≥70 HP lead, ≥75% relative HP lead and ≥1 alive lead wins; after turn 35, ≥50 HP lead and ≥55% relative HP lead wins. No trivial HP difference can trigger mercy.
+5. **Sudden Death arena at turn 30:** survivors redeploy to a flat, open centre battlefield, preserving their HP, team, inventory, stats and alive status. Red starts at x=300 and increases 50px per surviving seat; Blue at x=980 and decreases 50px. This prevents impossible shots between extreme edge survivors x=90 and x=1190, which in R2 produced indefinite 120HP-versus-120HP deadlocks. TV and phones announce this transition.
+6. **Roller/Bouncer:** Roller follows ground with friction, stops at trenches/walls and detonates on tank contact; Bouncer has two physical ricochets before third-impact detonation. Regression tests added.
+7. **Version and notes:** `/health` reports `r3`; old branch/PR status updated to match merged history.
+
+### Measured 6v6 Forts outcomes
+
+Twelve full simulated games use real Durable Object turn, inventory, lock, wind and projectile functions, with seeded aim-search bots and varying aim error. All results are reproducible with `node scripts/simulate-matches.mjs` (a release CI gate). These are **not** live device results.
+
+| Seed | Starter | Turns | Victory | Red HP / alive | Blue HP / alive | Winner |
+|---|---|---:|---|---|---|---|
+| 101 | Red | 29 | Mercy | 159 / 2 | 87 / 1 | Red |
+| 202 | Blue | 35 | Wipe | 0 / 0 | 11 / 1 | Blue |
+| 303 | Red | 39 | Wipe | 38 / 2 | 0 / 0 | Red |
+| 404 | Red | 35 | Wipe | 55 / 1 | 0 / 0 | Red |
+| 505 | Blue | 27 | Mercy | 120 / 1 | 259 / 4 | Blue |
+| 606 | Red | 27 | Mercy | 134 / 2 | 307 / 4 | Blue |
+| 707 | Red | 27 | Mercy | 149 / 2 | 30 / 1 | Red |
+| 808 | Blue | 27 | Mercy | 182 / 3 | 91 / 2 | Red |
+| 909 | Red | 38 | Wipe | 0 / 0 | 62 / 1 | Blue |
+| 111 | Red | 33 | Wipe | 28 / 1 | 0 / 0 | Red |
+| 222 | Blue | 37 | Wipe | 0 / 0 | 40 / 1 | Blue |
+| 333 | Red | 31 | Mercy | 229 / 3 | 125 / 2 | Red |
+
+**Result:** 12/12 decisive results before turn 40; zero turn-limit HP decisions; 9/12 in the 20–35 turn target range. Three finished at 37–39 turns. No claim that all human players will achieve these outcomes.
+
+### New automated regression coverage
+
+- Starts Red / Blue / Red across successive matches.
+- Both former squads can aim/lock after merging; opponent and host aim payload privacy remains intact.
+- Twinshot doesn't deduct extra premium ammo, bypass the damage cap or invent weapons.
+- Roller stops at a trench lip; Bouncer ricochets twice and explodes on the third ground impact.
+- Sudden Death arena arrives only after 30 turns, with open sky, sufficient spacing and original HP/team/inventory state preserved.
+
+### Remaining release blockers
+
+Zuko must independently inspect endgame changes and verify the measurements. Mercy, Twinshot, the early squad merger and the Sudden Death arena are owner-facing deviations requiring review/acceptance. At least four actual phones plus a TV must complete a game. All 12-client live performance, real iOS Safari controls, full console sweep and match experience remain unverified until those tests occur. The auditor checklist is not changed by the builder.
