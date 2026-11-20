@@ -229,9 +229,22 @@ export function simulateVolley({grid,players,shots,wind=0,seed=1}){
    if(!p.alive)continue;p.age+=step;const w=WEAPONS[p.kind];
    if(p.mode==="burrow"){p.x+=p.vx*step;p.y+=p.vy*step;p.distance+=Math.hypot(p.vx,p.vy)*step;if(at(g,p.x,p.y)!==1||p.distance>=180)detonate(p,t);}
    else if(p.mode==="roll"){
-    const nx=p.x+p.vx*step,ground=surfaceBelow(g,nx,Math.max(0,p.y-12));const diff=ground-(p.y+4);
-    if(Math.abs(diff)>10||at(g,nx,p.y)){detonate(p,t);continue;}
-    p.x=nx;p.y=ground-4;p.vx+=(-Math.sign(p.vx)*120+Math.sign(diff)*Math.abs(diff)*12)*step;p.distance+=Math.abs(p.vx)*step;if(Math.abs(p.vx)<12||p.age>4)detonate(p,t);
+    // Roll on the terrain surface with finite energy. Concrete walls and
+    // trench lips are barriers, not pass-through geometry.
+    const nx=p.x+p.vx*step,ground=surfaceBelow(g,nx,Math.max(0,p.y-12)),diff=ground-(p.y+4);
+    const dx=Math.abs(nx-p.x),maxClimb=dx*Math.tan(55*Math.PI/180)+3;
+    if(nx<0||nx>=WIDTH||!Number.isFinite(ground)||ground>=HEIGHT||Math.abs(diff)>Math.max(8,maxClimb)||at(g,nx,p.y)){
+     detonate(p,t);continue;
+    }
+    const priorX=p.x;p.x=nx;p.y=ground-4;
+    const hit=tanks.some(k=>k.alive&&(k.id!==p.owner||p.age>.075)&&Math.abs(k.x-p.x)<26&&Math.abs(k.y-p.y)<15);
+    if(hit){detonate(p,t);continue;}
+    const friction=120*step;
+    const slopeAccel=clamp(diff,-5,5)*12*step;
+    const nextSpeed=p.vx+(-Math.sign(p.vx)*friction)+Math.sign(p.vx)*slopeAccel;
+    p.vx=Math.sign(nextSpeed)===Math.sign(p.vx)?nextSpeed:0;
+    p.distance+=Math.abs(p.x-priorX);
+    if(Math.abs(p.vx)<12||p.age>4)detonate(p,t);
    }else{
     const drag=w.drag,mag=Math.hypot(p.vx,p.vy);
     p.vx+=(wind*(drag/.00035)-drag*mag*p.vx)*step;
@@ -253,8 +266,15 @@ export function simulateVolley({grid,players,shots,wind=0,seed=1}){
     const m=encountered;
     if(m){
      if(p.kind==="mole"&&m===1){p.mode="burrow";const len=Math.hypot(p.vx,p.vy)||1;p.vx=p.vx/len*420;p.vy=p.vy/len*420;continue;}
-     if(p.kind==="roller"){p.mode="roll";p.x=lastX;p.y=surfaceBelow(g,p.x,Math.max(0,lastY-12))-4;p.vx=Math.sign(p.vx)*Math.max(120,Math.abs(p.vx)*.55);continue;}
-     if(p.kind==="bouncer"&&p.bounce<2){p.x=lastX;p.y=lastY;p.vy=-Math.abs(p.vy)*.55;p.vx*=.78;p.bounce++;continue;}
+     if(p.kind==="roller"){p.mode="roll";p.x=lastX;p.y=surfaceBelow(g,p.x,Math.max(0,lastY-12))-4;p.vx=Math.sign(p.vx)*Math.max(120,Math.abs(p.vx)*.55);p.age=0;events.push({type:"roll",t:+t.toFixed(3),x:p.x,y:p.y});continue;}
+     if(p.kind==="bouncer"&&p.bounce<2){
+      const wall=!!at(g,p.x,lastY)&&!at(g,lastX,p.y);
+      p.x=lastX;p.y=lastY;
+      if(wall){p.vx=-p.vx*.55;p.vy*=.75;}else{p.vy=-Math.abs(p.vy)*.55;p.vx*=.9;}
+      p.bounce++;
+      events.push({type:"bounce",t:+t.toFixed(3),x:p.x,y:p.y,count:p.bounce});
+      continue;
+     }
      detonate(p,t);
     }
    }

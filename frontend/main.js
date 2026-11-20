@@ -4,7 +4,7 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const args=new URLSearchParams(location.search), SERVER=(window.BARRAGE_WORKER_URL||"https://pocket-tanks-max.adityasuresh2110.workers.dev").replace(/\/$/,""),WS=SERVER.replace(/^http/,"ws");
 const PAGE=location.origin+location.pathname,MAPS={forts:"THE FORTS",canyon:"CANYON CROSS",hollow:"THE HOLLOW"};
-const team=n=>n===0?"RED":"BLUE",playerKey=c=>"barrage-seat-"+c,hostKey=c=>"barrage-host-"+c;
+const team=n=>n===0?"RED":"BLUE",turnLabel=r=>r.converged?team(r.turn.team)+" / SUDDEN DEATH":r.turnIndex>=16?team(r.turn.team)+" / TWINSHOT FINALE":r.turn.squad===2?team(r.turn.team)+" / FINAL BARRAGE":team(r.turn.team)+" / SQUAD "+(r.turn.squad?"B":"A"),playerKey=c=>"barrage-seat-"+c,hostKey=c=>"barrage-host-"+c;
 let role="",code="",secret="",seatId="",state=null,ws=null,retry=0,reconnectTimer=0,roomFailed=false;
 let localAim={angle:45,power:60,weapon:"single"},controlKey="",grid=null,terrainBitmap=null,terrainRef=null;
 let muted=localStorage.getItem("barrage-muted")==="yes",audio=null,playback=null,seenVolley=-1,drawTime=0;
@@ -57,9 +57,9 @@ function renderHost(){
  $("hostTopLabel").textContent=r.phase==="lobby"?"BATTLEFIELD / WAITING ROOM":r.phase==="over"?"BATTLEFIELD / FINISHED":"BATTLEFIELD / MATCH "+r.match+" / TURN "+(r.turnIndex+1);
  $("hostHeading").textContent=r.phase==="lobby"?"Gather your squad.":r.phase==="over"?team(r.winner)+" TEAM VICTORIOUS":"Let the shells fly.";
  $("timerPill").textContent=r.phase==="lobby"?"LOBBY":r.phase==="over"?"GAME OVER":r.paused?"PAUSED":r.phase==="replay"?"IMPACT":seconds()===null?"∞":seconds()+"S";
- $("fieldCaption").textContent=MAPS[r.map]+" / "+r.players.length+" TANKS";
+ $("fieldCaption").textContent=(r.converged?"SUDDEN DEATH ARENA":MAPS[r.map])+" / "+r.players.length+" TANKS";
  $("turnWind").textContent="WIND "+(r.wind<0?"◀ ":r.wind>0?"▶ ":"· ")+Math.abs(r.wind);
- const banner=$("stageBanner");banner.classList.toggle("hidden",r.phase==="lobby");banner.textContent=r.phase==="over"?team(r.winner)+" WINS":r.paused?"PAUSED":r.phase==="replay"?"SHELLS IN FLIGHT":team(r.turn.team)+" SQUAD "+(r.turn.squad?"B":"A")+" · TAKE AIM";
+ const banner=$("stageBanner");banner.classList.toggle("hidden",r.phase==="lobby");banner.textContent=r.phase==="over"?team(r.winner)+" WINS":r.paused?"PAUSED":r.phase==="replay"?"SHELLS IN FLIGHT":turnLabel(r)+" · TAKE AIM";
  $("volleyOverlay").classList.toggle("hidden",r.phase!=="replay");
  const aside=$("hostSide");let key;
  if(r.phase==="lobby"){
@@ -93,7 +93,7 @@ function renderHost(){
  }else{
   key=["match",r.turnIndex,r.phase,r.paused,r.players.map(p=>p.hp+":"+p.locked).join("/")].join("/");
   if(aside.dataset.key===key)return;aside.dataset.key=key;
-  aside.innerHTML=`<div class="eyebrow">LIVE MATCH / BEST OF ${r.series.bestOf}</div><h3>${team(r.turn.team)} SQUAD ${r.turn.squad?"B":"A"}</h3>
+  aside.innerHTML=`<div class="eyebrow">LIVE MATCH / BEST OF ${r.series.bestOf}</div><h3>${turnLabel(r)}</h3>
    <p>${r.phase==="replay"?"Shots are flying. Wait for impact.":r.paused?"Paused by host.":"Commanders are choosing shots."}</p>
    <div class="scores"><span class="red">${r.series.red} RED</span><span class="blue">BLUE ${r.series.blue}</span></div><div class="divider"></div><div class="eyebrow">TANK STATUS</div>
    <div class="roster-scroll">${r.players.map(p=>`<div class="playerline"><span class="teamchip ${p.team?"blue":"red"}">${team(p.team)} ${p.squad?"B":"A"}</span><strong>${esc(p.name)}</strong><small>${p.alive?p.hp+" HP":"OUT"}</small><small>${p.locked?"✓":""}</small></div>`).join("")}</div>
@@ -109,23 +109,23 @@ function renderHost(){
 function squadHTML(mates){return `<div class="eyebrow">SQUAD COORDINATION / PRIVATE</div>${mates.length?mates.map(m=>`<div class="playerline"><strong>${esc(m.name)}</strong><small>${m.angle===undefined?"AIMING…":m.angle+"° / "+m.power+" / "+esc(WEAPONS[m.weapon]?.name||"Single Shot")}</small><small>${m.locked?"✓":""}</small></div>`).join(""):"<p class='micro'>Your squadmates appear here.</p>"}`;}
 function renderPhone(){
  const r=state,p=r.you;if(!p){$("phoneContent").textContent="Joining room…";return;}
- const firing=r.phase==="aim"&&!r.paused&&p.alive&&p.team===r.turn.team&&p.squad===r.turn.squad;
+ const firing=r.phase==="aim"&&!r.paused&&p.alive&&p.team===r.turn.team&&(r.turn.squad===2||p.squad===r.turn.squad);
  const key=[r.phase,r.turnIndex,r.paused,firing,p.locked,p.alive,!!p.buried].join("/");
  if(controlKey===key){if($("hpValue"))$("hpValue").textContent=p.hp+" / 120 HP";if($("hpBar"))$("hpBar").style.width=p.hp/120*100+"%";if($("squadPanel")&&r.squadAim)$("squadPanel").innerHTML=squadHTML(r.squadAim);const fuel=$("fuelValue");if(fuel)fuel.textContent=Math.round(p.fuel)+" PX FUEL";return;}
  controlKey=key;
  if(firing&&Number($("phoneContent").dataset.turn)!==r.turnIndex)localAim={angle:p.team===0?45:135,power:60,weapon:"single"};
- const label=r.phase==="lobby"?"WAITING ROOM":r.phase==="over"?"MATCH COMPLETE":r.phase==="replay"?"SHELLS IN FLIGHT":r.paused?"MATCH PAUSED":team(r.turn.team)+" SQUAD "+(r.turn.squad?"B":"A");
+ const label=r.phase==="lobby"?"WAITING ROOM":r.phase==="over"?"MATCH COMPLETE":r.phase==="replay"?"SHELLS IN FLIGHT":r.paused?"MATCH PAUSED":turnLabel(r);
  let body="";
  if(r.phase==="lobby")body=`<div class="spectate"><div class="spectate-icon">⌖</div><h2>YOU'RE ENLISTED.</h2><p>Waiting for the host. Keep your phone open.</p><div class="room-code" style="font-size:35px">${esc(r.code)}</div></div>`;
  else if(r.phase==="over")body=`<div class="spectate"><div class="spectate-icon">★</div><h2 style="color:var(--gold)">${team(r.winner)} WINS!</h2><p>${p.team===r.winner?"GLORIOUS VICTORY":"A NOBLE DEFEAT"}</p><div class="scores"><span class="red">RED ${r.series.red}</span><span class="blue">BLUE ${r.series.blue}</span></div><p>${p.stats?.shots||0} SHOTS · ${p.stats?.damage||0} DAMAGE · ${p.stats?.kills||0} KILLS</p></div>`;
  else if(firing){
   const entries=Object.entries(WEAPONS).filter(([k])=>k==="single"||p.inventory?.[k]>0);
   if(!entries.some(([k])=>k===localAim.weapon))localAim.weapon="single";
-  body=`<div class="phone-controls"><div class="control-box"><div class="control-top"><span class="control-label">TURRET ANGLE</span><span class="control-value" id="angleValue">${localAim.angle}°</span></div><input class="range" type="range" id="angle" min="0" max="180" step="1" value="${localAim.angle}"><div class="fine-row"><button data-fine="-1">− 1°</button><button data-fine="1">+ 1°</button></div></div>
+  body=`<div class="phone-controls">${r.converged?'<p class="small-note" style="color:var(--gold)">SUDDEN DEATH: SURVIVING TANKS HAVE REDEPLOYED TO THE OPEN ARENA. FINISH THE FIGHT.</p>':""}<div class="control-box"><div class="control-top"><span class="control-label">TURRET ANGLE</span><span class="control-value" id="angleValue">${localAim.angle}°</span></div><input class="range" type="range" id="angle" min="0" max="180" step="1" value="${localAim.angle}"><div class="fine-row"><button data-fine="-1">− 1°</button><button data-fine="1">+ 1°</button></div></div>
   <div class="control-box"><div class="control-top"><span class="control-label">LAUNCH POWER</span><span class="control-value" id="powerValue">${localAim.power}%</span></div><input class="range" type="range" id="power" min="0" max="100" step="1" value="${localAim.power}"></div>
   <div class="control-box"><div class="control-top"><span class="control-label">TANK MOVEMENT${p.buried?" / BURIED":""}</span><span class="small-note" id="fuelValue">${Math.round(p.fuel)} PX FUEL</span></div><div class="fine-row"><button class="move-button" data-move="-1" ${p.buried?"disabled":""}>◀ LEFT</button><button class="move-button" data-move="1" ${p.buried?"disabled":""}>RIGHT ▶</button></div></div>
   <div class="control-box"><div class="control-top"><span class="control-label">CHOOSE YOUR WEAPON</span><span class="small-note">SINGLE SHOT ∞</span></div><div class="weapon-grid">${entries.map(([k,w])=>`<button class="weapon-card ${k===localAim.weapon?"active":""}" data-weapon="${k}"><b>${esc(w.name)}</b><small>${k==="single"?"∞":p.inventory[k]+" LEFT"}</small></button>`).join("")}</div></div>
-  <button id="lock" class="lock-button ${p.locked?"locked":""}">${p.locked?"✓ LOCKED IN / TAP TO EDIT":"LOCK IN YOUR SHOT →"}</button><div class="squadmates" id="squadPanel">${squadHTML(r.squadAim||[])}</div></div>`;
+  ${r.turnIndex>=28?'<p class="small-note" style="color:var(--gold);text-align:center">TWINSHOT FINALE: YOUR SHOT + 1 FREE ECHO SHELL. DAMAGE CAP UNCHANGED.</p>':""}<button id="lock" class="lock-button ${p.locked?"locked":""}">${p.locked?"✓ LOCKED IN / TAP TO EDIT":"LOCK IN YOUR SHOT →"}</button><div class="squadmates" id="squadPanel">${squadHTML(r.squadAim||[])}</div></div>`;
  }else body=`<div class="spectate"><div class="spectate-icon">${p.alive?"◎":"✕"}</div><h2>${r.phase==="replay"?"WATCH THE SKIES.":r.paused?"GAME PAUSED":p.alive?"STAND BY.":"TANK DESTROYED."}</h2><p>${p.alive?"Watch the TV. Your squad will fire soon.":"Spectate until the rematch."}</p></div>`;
  $("phoneContent").dataset.turn=r.turnIndex;
  $("phoneContent").innerHTML=`<div class="phone-header"><div><div class="eyebrow">CALLSIGN / ${esc(r.code)}</div><strong>${esc(p.name)}</strong></div><span class="teamchip ${p.team?"blue":"red"}">${team(p.team)} · SQUAD ${p.squad?"B":"A"}</span></div>
@@ -188,7 +188,7 @@ function drawScene(canvas,g,tanks,play,now,mini=false,map="forts"){
 function frame(now){
  if(now-drawTime>15){drawTime=now;
   if(!$("landing").classList.contains("hidden"))drawScene($("preview"),previewGrid,previewTanks,null,now,true);
-  if(role==="host"&&state&&!$("host").classList.contains("hidden"))drawScene($("battlefield"),grid||previewGrid,state.players,playback,now,false,MAPS[state.map]);
+  if(role==="host"&&state&&!$("host").classList.contains("hidden"))drawScene($("battlefield"),grid||previewGrid,state.players,playback,now,false,state.converged?"SUDDEN DEATH ARENA":MAPS[state.map]);
   if(state?.phase==="aim"&&!state.paused){if(role==="host")$("timerPill").textContent=seconds()===null?"∞":seconds()+"S";const clock=$("phoneClock");if(clock)clock.textContent=(seconds()??"∞")+" SEC";}
   if(playback&&state?.phase==="replay"&&now-playback.start>(playback.data.duration+1.5)*1000)$("volleyOverlay").classList.add("hidden");
  }

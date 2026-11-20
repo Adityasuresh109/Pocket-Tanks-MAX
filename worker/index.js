@@ -1,4 +1,4 @@
-import {generate,spawn,moveTank,simulateVolley,WEAPONS,encode} from "../shared/engine.js";
+import {generate,spawn,moveTank,simulateVolley,WEAPONS,encode,CW,CH} from "../shared/engine.js";
 
 const MAX_PLAYERS=12, MAX_NAME=20;
 const json=(obj,status=200)=>new Response(JSON.stringify(obj),{status,headers:{"content-type":"application/json; charset=utf-8","access-control-allow-origin":"*","cache-control":"no-store"}});
@@ -14,7 +14,7 @@ export default {
  async fetch(request,env){
   const url=new URL(request.url),path=url.pathname;
   if(request.method==="OPTIONS")return new Response(null,{status:204,headers:{"access-control-allow-origin":"*","access-control-allow-headers":"content-type","access-control-allow-methods":"GET,POST,OPTIONS"}});
-  if(path==="/health")return json({ok:true,service:"BARRAGE",version:"r1"});
+  if(path==="/health")return json({ok:true,service:"BARRAGE",version:"r3"});
   if(path==="/api/rooms"&&request.method==="POST"){
    // 6-char codes have ample entropy for ephemeral party rooms. Retry if ever allocated.
    for(let i=0;i<5;i++){
@@ -44,6 +44,11 @@ export class BarrageRoom {
  sendHost(payload){for(const ws of this.connections().filter(s=>this.attachment(s).role==="host"))this.message(ws,payload);}
  error(ws,detail){this.message(ws,{type:"error",message:detail});}
  active(){return this.room?.players.filter(p=>p.alive)||[];}
+ // From turn 16 onward, all remaining tanks fire together.
+ isActiveFirer(p){
+  const r=this.room;
+  return !!(p?.alive&&p.team===r.turn.team&&(r.turn.squad===2||p.squad===r.turn.squad));
+ }
  visibleSeat(p){return {...publicPlayer(p),inventory:{...p.inventory},fuel:p.fuel,angle:p.aim?.angle??45,power:p.aim?.power??55,weapon:p.aim?.weapon||"single"};}
  terrainSnapshot(){
   if(!this.room.grid)return null;
@@ -52,7 +57,7 @@ export class BarrageRoom {
  }
  summary(){
   const r=this.room;
-  return {type:"state",code:r.code,phase:r.phase,map:r.map,turn:r.turn,turnIndex:r.turnIndex,wind:r.wind,deadline:r.deadline,paused:r.paused,reason:r.reason||"",series:r.series,match:r.match,players:r.players.map(publicPlayer),grid:this.terrainSnapshot(),events:r.lastVolley||null,winner:r.winner||null,settings:r.settings};
+  return {type:"state",code:r.code,phase:r.phase,map:r.map,turn:r.turn,turnIndex:r.turnIndex,finalBarrage:r.turn.squad===2,converged:!!r.converged,wind:r.wind,deadline:r.deadline,paused:r.paused,reason:r.reason||"",series:r.series,match:r.match,players:r.players.map(publicPlayer),grid:this.terrainSnapshot(),events:r.lastVolley||null,winner:r.winner||null,settings:r.settings};
  }
  update(extra){
   if(!this.room)return;
@@ -64,8 +69,8 @@ export class BarrageRoom {
     const p=this.room.players.find(p=>p.id===auth.id);
     if(!p)continue;
     view.you=this.visibleSeat(p);
-    if(this.room.phase==="aim"&&p.alive&&p.team===this.room.turn.team&&p.squad===this.room.turn.squad){
-     view.squadAim=this.room.players.filter(t=>t.alive&&t.team===p.team&&t.squad===p.squad).map(t=>({id:t.id,name:t.name,locked:t.locked,...(t.aim?{angle:t.aim.angle,power:t.aim.power,weapon:t.aim.weapon}:{})}));
+    if(this.room.phase==="aim"&&this.isActiveFirer(p)){
+     view.squadAim=this.room.players.filter(t=>this.isActiveFirer(t)).map(t=>({id:t.id,name:t.name,locked:t.locked,...(t.aim?{angle:t.aim.angle,power:t.aim.power,weapon:t.aim.weapon}:{})}));
     }
    }else{
     // The host never sees private aim data during the aim phase.
@@ -127,15 +132,15 @@ export class BarrageRoom {
   try{
    if(data.type==="ping"){this.message(ws,{type:"pong",at:Date.now()});return;}
    if(data.type==="host"&&isHost)await this.hostAction(ws,data);
-   else if(data.type==="aim"&&p&&r.phase==="aim"&&!r.paused&&p.alive&&p.team===r.turn.team&&p.squad===r.turn.squad){
+   else if(data.type==="aim"&&p&&r.phase==="aim"&&!r.paused&&this.isActiveFirer(p)){
     if(p.locked)return this.error(ws,"Unlock to change your aim.");
     p.aim=sanitize(data);this.update();
    }
-   else if(data.type==="move"&&p&&r.phase==="aim"&&!r.paused&&p.alive&&!p.locked&&p.team===r.turn.team&&p.squad===r.turn.squad){
+   else if(data.type==="move"&&p&&r.phase==="aim"&&!r.paused&&!p.locked&&this.isActiveFirer(p)){
     const step=Math.max(-8,Math.min(8,Number(data.dx)||0));
     const result=moveTank(r.grid,r.players,p.id,step,p.fuel);p.fuel=Math.max(0,p.fuel-result.moved);await this.save();this.update();
    }
-   else if(data.type==="lock"&&p&&r.phase==="aim"&&!r.paused&&p.alive&&p.team===r.turn.team&&p.squad===r.turn.squad){
+   else if(data.type==="lock"&&p&&r.phase==="aim"&&!r.paused&&this.isActiveFirer(p)){
     p.aim=p.aim||sanitize({angle:45,power:55,weapon:"single"});const weapon=p.aim.weapon;
     if(weapon!=="single"&&!(p.inventory[weapon]>0))return this.error(ws,"You're out of that weapon. Select another.");
     p.locked=!!data.locked;await this.save();this.update();
@@ -168,10 +173,10 @@ export class BarrageRoom {
   await this.save();this.update();
  }
  balanced(){const reds=this.room.players.filter(p=>p.team===0).length,blues=this.room.players.length-reds;return reds>=1&&blues>=1&&Math.abs(reds-blues)<=1&&reds<=6&&blues<=6;}
- firing(){const r=this.room;return r.players.filter(p=>p.alive&&p.team===r.turn.team&&p.squad===r.turn.squad);}
+ firing(){const r=this.room;return r.players.filter(p=>this.isActiveFirer(p));}
  async startMatch(){
   const r=this.room;if(!this.balanced())return;
-  r.match++;r.grid=generate(r.map,r.seed+r.match);r.gridEpoch++;r.phase="aim";r.turnIndex=0;r.turn={team:0,squad:0};r.nextSquad=[0,0];r.winner=null;r.lastVolley=null;r.log=[];r.suddenDeath=false;
+  r.match++;r.grid=generate(r.map,r.seed+r.match);r.gridEpoch++;r.phase="aim";r.turnIndex=0;r.turn={team:(r.match-1)%2,squad:0};r.nextSquad=[0,0];r.winner=null;r.lastVolley=null;r.log=[];r.suddenDeath=false;r.converged=false;
   // Match-level mirrored weapons by slot.
   const pool=Object.keys(WEAPONS).filter(x=>!["single","dirt","excavator"].includes(x));
   const packs={};for(let slot=1;slot<=6;slot++){const shuffled=[...pool].sort((a,b)=>rand(r.seed+r.match+slot,a.charCodeAt(0))-rand(r.seed+r.match+slot,b.charCodeAt(0)));packs[slot]=shuffled.slice(0,5);}
@@ -190,9 +195,17 @@ export class BarrageRoom {
   const hp=side=>r.players.filter(p=>p.team===side&&p.alive).reduce((sum,p)=>sum+p.hp,0);
   const alive=side=>r.players.filter(p=>p.team===side&&p.alive).length;
   const redHP=hp(0),blueHP=hp(1),redAlive=alive(0),blueAlive=alive(1);
-  if(r.turnIndex>=24&&r.turnIndex%2===0){
+  // R3 graduated mercy rule: a victory must be earned by a strong surviving
+  // HP lead; tiny HP tiebreaks are never presented as decisive wins.
+  // Thresholds scale down as armies shrink, not damage or HP maximums.
+  if(r.turnIndex>=24){
    const lead=Math.abs(redHP-blueHP);
-   if(lead>=360&&Math.abs(redAlive-blueAlive)>=2){await this.finish(redHP>blueHP?0:1);return;}
+   const lower=Math.max(1,Math.min(redHP,blueHP));
+   const aliveLead=Math.abs(redAlive-blueAlive);
+   const crushing=lead>=360&&aliveLead>=2;
+   const commander=r.turnIndex>=27&&lead>=70&&aliveLead>=1&&lead/lower>=.75;
+   const finalAdvantage=r.turnIndex>=35&&lead>=50&&lead/lower>=.55;
+   if(crushing||commander||finalAdvantage){await this.finish(redHP>blueHP?0:1);return;}
   }
   if(r.turnIndex>=40){
    if(redHP!==blueHP){await this.finish(redHP>blueHP?0:1);return;}
@@ -200,12 +213,33 @@ export class BarrageRoom {
    r.suddenDeath=true;
   }
   
+  // Sudden Death arena: if a game is still unresolved at turn 30, redeploy
+  // all surviving tanks into an open centre field. Preserve HP, weapons and
+  // team identity, and preserve the 40HP-per-volley damage cap. This removes
+  // impossible edge-to-edge shots (the farthest spawns are 1100px apart).
+  if(r.turnIndex>=30&&!r.converged){
+   const field=new Uint8Array(CW*CH);
+   for(let row=150;row<CH;row++)field.fill(1,row*CW,(row+1)*CW);
+   r.grid=field;r.gridEpoch++;r.converged=true;
+   for(const team of [0,1]){
+    const survivors=r.players.filter(p=>p.team===team&&p.alive).sort((a,b)=>a.slot-b.slot);
+    for(let i=0;i<survivors.length;i++){
+     const p=survivors[i];p.x=team===0?300+50*i:980-50*i;p.y=588;p.buried=false;
+    }
+   }
+   r.log.push({kind:"sudden-death-arena",turn:r.turnIndex});
+  }
   r.phase="aim";r.paused=false;r.reason="";r.lastVolley=null;
   const team=r.turn.team;
   let squad=r.nextSquad[team];
-  if(!r.players.some(p=>p.alive&&p.team===team&&p.squad===squad))squad=1-squad;
-  if(!r.players.some(p=>p.alive&&p.team===team&&p.squad===squad)){await this.finish(1-team);return;}
-  r.turn={team,squad};r.nextSquad[team]=1-squad;
+  if(r.turnIndex>=16){
+   squad=2; // FINAL BARRAGE: all surviving tanks fire every team turn.
+  }else{
+   if(!r.players.some(p=>p.alive&&p.team===team&&p.squad===squad))squad=1-squad;
+   if(!r.players.some(p=>p.alive&&p.team===team&&p.squad===squad)){await this.finish(1-team);return;}
+   r.nextSquad[team]=1-squad;
+  }
+  r.turn={team,squad};
   r.wind=Math.round(rand(r.seed+r.match*991,r.turnIndex+11)*100-50);
   for(const p of r.players){p.locked=false;p.aim=null;p.fuel=60;}
   r.deadline=r.settings.timer?Date.now()+r.settings.timer*1000:0;
@@ -216,8 +250,16 @@ export class BarrageRoom {
  async fire(){
   const r=this.room;if(r.phase!=="aim"||r.paused)return;
   r.phase="replay";r.deadline=0;await this.ctx.storage.deleteAlarm();
-  const shots=this.firing().filter(p=>p.locked).map(p=>({playerId:p.id,...p.aim}));
-  for(const s of shots){const p=r.players.find(p=>p.id===s.playerId);if(s.weapon!=="single"&&p.inventory[s.weapon]>0)p.inventory[s.weapon]--;p.stats.shots++;}
+  const primaries=this.firing().filter(p=>p.locked).map(p=>({playerId:p.id,...p.aim}));
+  // Twinshot Finale: from turn 16, every surviving locked tank gets a
+  // complimentary standard shell at a 2-degree offset. Damage still caps at
+  // 40 HP per target per volley; no extra inventory is consumed.
+  const echoes=r.turnIndex>=16?primaries.map(s=>({
+   playerId:s.playerId,weapon:s.weapon==="bertha"?"bertha":"single",angle:Math.max(0,Math.min(180,s.angle+(s.angle<=90?2:-2))),power:s.power
+  })):[];
+  const shots=[...primaries,...echoes];
+  for(const s of primaries){const p=r.players.find(p=>p.id===s.playerId);if(s.weapon!=="single"&&p.inventory[s.weapon]>0)p.inventory[s.weapon]--;p.stats.shots++;}
+  for(const s of echoes){const p=r.players.find(p=>p.id===s.playerId);p.stats.shots++;}
   const before=r.players.map(p=>({id:p.id,hp:p.hp,alive:p.alive}));
   const seed=(r.seed+r.match*1009+r.turnIndex*19)>>>0;
   const result=simulateVolley({grid:r.grid,players:r.players,shots,wind:r.wind,seed});

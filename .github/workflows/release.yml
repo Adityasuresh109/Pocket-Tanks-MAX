@@ -27,6 +27,9 @@ jobs:
         run: npm run syntax
       - name: Physics and combat regressions
         run: npm test
+      - name: Measure three complete 6v6 Forts battles with reproducible skilled bots
+        timeout-minutes: 8
+        run: node scripts/simulate-matches.mjs
       - name: Verify Wrangler bundles the Worker and shared game engine
         run: npx --yes wrangler@4 deploy --config worker/wrangler.toml --dry-run
 
