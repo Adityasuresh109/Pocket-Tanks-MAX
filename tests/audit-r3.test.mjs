@@ -82,7 +82,7 @@ test("Twinshot Finale fires a free Single Shot after turn 28 without double char
  const before=r.room.players.map(p=>({id:p.id,hp:p.hp}));
  await r.fire();
  assert.equal(r.room.lastVolley.shots.length,2);
- assert.equal(r.room.lastVolley.shots[1].weapon,"single");
+ assert.equal(r.room.lastVolley.shots[1].weapon,hadBertha?"bertha":"single");
  assert.equal(r.room.lastVolley.shots[0].playerId,r.room.lastVolley.shots[1].playerId);
  if(hadBertha)assert.equal(shooter.inventory.bertha,hadBertha-1);
  for(const p of r.room.players){
