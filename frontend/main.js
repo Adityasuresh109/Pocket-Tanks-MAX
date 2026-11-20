@@ -4,7 +4,7 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const args=new URLSearchParams(location.search), SERVER=(window.BARRAGE_WORKER_URL||"https://pocket-tanks-max.adityasuresh2110.workers.dev").replace(/\/$/,""),WS=SERVER.replace(/^http/,"ws");
 const PAGE=location.origin+location.pathname,MAPS={forts:"THE FORTS",canyon:"CANYON CROSS",hollow:"THE HOLLOW"};
-const team=n=>n===0?"RED":"BLUE",turnLabel=r=>r.turnIndex>=16?team(r.turn.team)+" / TWINSHOT FINALE":r.turn.squad===2?team(r.turn.team)+" / FINAL BARRAGE":team(r.turn.team)+" / SQUAD "+(r.turn.squad?"B":"A"),playerKey=c=>"barrage-seat-"+c,hostKey=c=>"barrage-host-"+c;
+const team=n=>n===0?"RED":"BLUE",turnLabel=r=>r.converged?team(r.turn.team)+" / SUDDEN DEATH":r.turnIndex>=16?team(r.turn.team)+" / TWINSHOT FINALE":r.turn.squad===2?team(r.turn.team)+" / FINAL BARRAGE":team(r.turn.team)+" / SQUAD "+(r.turn.squad?"B":"A"),playerKey=c=>"barrage-seat-"+c,hostKey=c=>"barrage-host-"+c;
 let role="",code="",secret="",seatId="",state=null,ws=null,retry=0,reconnectTimer=0,roomFailed=false;
 let localAim={angle:45,power:60,weapon:"single"},controlKey="",grid=null,terrainBitmap=null,terrainRef=null;
 let muted=localStorage.getItem("barrage-muted")==="yes",audio=null,playback=null,seenVolley=-1,drawTime=0;
@@ -57,7 +57,7 @@ function renderHost(){
  $("hostTopLabel").textContent=r.phase==="lobby"?"BATTLEFIELD / WAITING ROOM":r.phase==="over"?"BATTLEFIELD / FINISHED":"BATTLEFIELD / MATCH "+r.match+" / TURN "+(r.turnIndex+1);
  $("hostHeading").textContent=r.phase==="lobby"?"Gather your squad.":r.phase==="over"?team(r.winner)+" TEAM VICTORIOUS":"Let the shells fly.";
  $("timerPill").textContent=r.phase==="lobby"?"LOBBY":r.phase==="over"?"GAME OVER":r.paused?"PAUSED":r.phase==="replay"?"IMPACT":seconds()===null?"∞":seconds()+"S";
- $("fieldCaption").textContent=MAPS[r.map]+" / "+r.players.length+" TANKS";
+ $("fieldCaption").textContent=(r.converged?"SUDDEN DEATH ARENA":MAPS[r.map])+" / "+r.players.length+" TANKS";
  $("turnWind").textContent="WIND "+(r.wind<0?"◀ ":r.wind>0?"▶ ":"· ")+Math.abs(r.wind);
  const banner=$("stageBanner");banner.classList.toggle("hidden",r.phase==="lobby");banner.textContent=r.phase==="over"?team(r.winner)+" WINS":r.paused?"PAUSED":r.phase==="replay"?"SHELLS IN FLIGHT":turnLabel(r)+" · TAKE AIM";
  $("volleyOverlay").classList.toggle("hidden",r.phase!=="replay");
@@ -121,7 +121,7 @@ function renderPhone(){
  else if(firing){
   const entries=Object.entries(WEAPONS).filter(([k])=>k==="single"||p.inventory?.[k]>0);
   if(!entries.some(([k])=>k===localAim.weapon))localAim.weapon="single";
-  body=`<div class="phone-controls"><div class="control-box"><div class="control-top"><span class="control-label">TURRET ANGLE</span><span class="control-value" id="angleValue">${localAim.angle}°</span></div><input class="range" type="range" id="angle" min="0" max="180" step="1" value="${localAim.angle}"><div class="fine-row"><button data-fine="-1">− 1°</button><button data-fine="1">+ 1°</button></div></div>
+  body=`<div class="phone-controls">${r.converged?'<p class="small-note" style="color:var(--gold)">SUDDEN DEATH: SURVIVING TANKS HAVE REDEPLOYED TO THE OPEN ARENA. FINISH THE FIGHT.</p>':""}<div class="control-box"><div class="control-top"><span class="control-label">TURRET ANGLE</span><span class="control-value" id="angleValue">${localAim.angle}°</span></div><input class="range" type="range" id="angle" min="0" max="180" step="1" value="${localAim.angle}"><div class="fine-row"><button data-fine="-1">− 1°</button><button data-fine="1">+ 1°</button></div></div>
   <div class="control-box"><div class="control-top"><span class="control-label">LAUNCH POWER</span><span class="control-value" id="powerValue">${localAim.power}%</span></div><input class="range" type="range" id="power" min="0" max="100" step="1" value="${localAim.power}"></div>
   <div class="control-box"><div class="control-top"><span class="control-label">TANK MOVEMENT${p.buried?" / BURIED":""}</span><span class="small-note" id="fuelValue">${Math.round(p.fuel)} PX FUEL</span></div><div class="fine-row"><button class="move-button" data-move="-1" ${p.buried?"disabled":""}>◀ LEFT</button><button class="move-button" data-move="1" ${p.buried?"disabled":""}>RIGHT ▶</button></div></div>
   <div class="control-box"><div class="control-top"><span class="control-label">CHOOSE YOUR WEAPON</span><span class="small-note">SINGLE SHOT ∞</span></div><div class="weapon-grid">${entries.map(([k,w])=>`<button class="weapon-card ${k===localAim.weapon?"active":""}" data-weapon="${k}"><b>${esc(w.name)}</b><small>${k==="single"?"∞":p.inventory[k]+" LEFT"}</small></button>`).join("")}</div></div>
@@ -188,7 +188,7 @@ function drawScene(canvas,g,tanks,play,now,mini=false,map="forts"){
 function frame(now){
  if(now-drawTime>15){drawTime=now;
   if(!$("landing").classList.contains("hidden"))drawScene($("preview"),previewGrid,previewTanks,null,now,true);
-  if(role==="host"&&state&&!$("host").classList.contains("hidden"))drawScene($("battlefield"),grid||previewGrid,state.players,playback,now,false,MAPS[state.map]);
+  if(role==="host"&&state&&!$("host").classList.contains("hidden"))drawScene($("battlefield"),grid||previewGrid,state.players,playback,now,false,state.converged?"SUDDEN DEATH ARENA":MAPS[state.map]);
   if(state?.phase==="aim"&&!state.paused){if(role==="host")$("timerPill").textContent=seconds()===null?"∞":seconds()+"S";const clock=$("phoneClock");if(clock)clock.textContent=(seconds()??"∞")+" SEC";}
   if(playback&&state?.phase==="replay"&&now-playback.start>(playback.data.duration+1.5)*1000)$("volleyOverlay").classList.add("hidden");
  }
