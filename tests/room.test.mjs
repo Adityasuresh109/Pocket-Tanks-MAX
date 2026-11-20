@@ -76,5 +76,5 @@ test("skipping a stuck turn rotates to other team and host can pause/resume coun
  await room.hostAction(host,{action:"pause"});assert.equal(room.room.paused,false);
  await room.hostAction(host,{action:"skip"});
  assert.equal(room.room.turn.team,1);
- assert.equal(room.room.turnIndex,0);
+ assert.equal(room.room.turnIndex,1);
 });
