@@ -1,4 +1,4 @@
-import {generate,spawn,moveTank,simulateVolley,WEAPONS,encode} from "../shared/engine.js";
+import {generate,spawn,moveTank,simulateVolley,WEAPONS,encode,CW,CH} from "../shared/engine.js";
 
 const MAX_PLAYERS=12, MAX_NAME=20;
 const json=(obj,status=200)=>new Response(JSON.stringify(obj),{status,headers:{"content-type":"application/json; charset=utf-8","access-control-allow-origin":"*","cache-control":"no-store"}});
@@ -57,7 +57,7 @@ export class BarrageRoom {
  }
  summary(){
   const r=this.room;
-  return {type:"state",code:r.code,phase:r.phase,map:r.map,turn:r.turn,turnIndex:r.turnIndex,finalBarrage:r.turn.squad===2,wind:r.wind,deadline:r.deadline,paused:r.paused,reason:r.reason||"",series:r.series,match:r.match,players:r.players.map(publicPlayer),grid:this.terrainSnapshot(),events:r.lastVolley||null,winner:r.winner||null,settings:r.settings};
+  return {type:"state",code:r.code,phase:r.phase,map:r.map,turn:r.turn,turnIndex:r.turnIndex,finalBarrage:r.turn.squad===2,converged:!!r.converged,wind:r.wind,deadline:r.deadline,paused:r.paused,reason:r.reason||"",series:r.series,match:r.match,players:r.players.map(publicPlayer),grid:this.terrainSnapshot(),events:r.lastVolley||null,winner:r.winner||null,settings:r.settings};
  }
  update(extra){
   if(!this.room)return;
@@ -176,7 +176,7 @@ export class BarrageRoom {
  firing(){const r=this.room;return r.players.filter(p=>this.isActiveFirer(p));}
  async startMatch(){
   const r=this.room;if(!this.balanced())return;
-  r.match++;r.grid=generate(r.map,r.seed+r.match);r.gridEpoch++;r.phase="aim";r.turnIndex=0;r.turn={team:(r.match-1)%2,squad:0};r.nextSquad=[0,0];r.winner=null;r.lastVolley=null;r.log=[];r.suddenDeath=false;
+  r.match++;r.grid=generate(r.map,r.seed+r.match);r.gridEpoch++;r.phase="aim";r.turnIndex=0;r.turn={team:(r.match-1)%2,squad:0};r.nextSquad=[0,0];r.winner=null;r.lastVolley=null;r.log=[];r.suddenDeath=false;r.converged=false;
   // Match-level mirrored weapons by slot.
   const pool=Object.keys(WEAPONS).filter(x=>!["single","dirt","excavator"].includes(x));
   const packs={};for(let slot=1;slot<=6;slot++){const shuffled=[...pool].sort((a,b)=>rand(r.seed+r.match+slot,a.charCodeAt(0))-rand(r.seed+r.match+slot,b.charCodeAt(0)));packs[slot]=shuffled.slice(0,5);}
@@ -213,6 +213,22 @@ export class BarrageRoom {
    r.suddenDeath=true;
   }
   
+  // Sudden Death arena: if a game is still unresolved at turn 30, redeploy
+  // all surviving tanks into an open centre field. Preserve HP, weapons and
+  // team identity, and preserve the 40HP-per-volley damage cap. This removes
+  // impossible edge-to-edge shots (the farthest spawns are 1100px apart).
+  if(r.turnIndex>=30&&!r.converged){
+   const field=new Uint8Array(CW*CH);
+   for(let row=150;row<CH;row++)field.fill(1,row*CW,(row+1)*CW);
+   r.grid=field;r.gridEpoch++;r.converged=true;
+   for(const team of [0,1]){
+    const survivors=r.players.filter(p=>p.team===team&&p.alive).sort((a,b)=>a.slot-b.slot);
+    for(let i=0;i<survivors.length;i++){
+     const p=survivors[i];p.x=team===0?300+50*i:980-50*i;p.y=588;p.buried=false;
+    }
+   }
+   r.log.push({kind:"sudden-death-arena",turn:r.turnIndex});
+  }
   r.phase="aim";r.paused=false;r.reason="";r.lastVolley=null;
   const team=r.turn.team;
   let squad=r.nextSquad[team];
