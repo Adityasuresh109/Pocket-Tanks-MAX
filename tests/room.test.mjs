@@ -78,3 +78,18 @@ test("skipping a stuck turn rotates to other team and host can pause/resume coun
  assert.equal(room.room.turn.team,1);
  assert.equal(room.room.turnIndex,1);
 });
+
+test("host disconnect during aim freezes the alarm and retains the remaining timer",async()=>{
+ const {room,peers,storage}=await roomWith(4);
+ const host=mockSocket("host","host",peers);
+ await room.startMatch();
+ assert.equal(room.room.phase,"aim");
+ assert.ok(room.room.deadline>Date.now());
+ await room.webSocketClose(host);
+ assert.equal(room.room.paused,true);
+ assert.equal(room.room.deadline,0);
+ assert.ok(room.room.remaining>0);
+ assert.equal(storage.alarm,null);
+ await room.alarm();
+ assert.equal(room.room.phase,"aim","No shot may fire while the host is disconnected");
+});

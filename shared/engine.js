@@ -1,7 +1,7 @@
 // BARRAGE shared deterministic battlefield engine. No libraries or browser APIs.
 // Coordinates: 1280x720 logical pixels, 4px material cells.
 export const WIDTH=1280, HEIGHT=720, CELL=4, CW=320, CH=180;
-export const MATERIAL={EMPTY:0,DIRT:1,ROCK:2,CONCRETE:3};
+export const MATERIAL={EMPTY:0,DIRT:1,ROCK:2,CONCRETE:3,ROCK_DAMAGED:4,ROCK_CRACKED:5};
 export const WEAPONS={
   single:{name:"Single Shot",damage:25,radius:55,drag:.00035,color:"#f7d774"},
   bertha:{name:"Big Bertha",damage:30,radius:75,drag:.00015,color:"#ff956a"},
@@ -29,40 +29,64 @@ export function baseHeight(x,map="forts"){
  if(map==="hollow")return 495+wave-168*Math.exp(-(((x-640)/240)**2));
  return 475+wave-132*Math.exp(-(((x-640)/178)**2));
 }
+export const SPAWN_X=[90,185,275,365,450,535];
 export function generate(map="forts",seed=1){
  const g=new Uint8Array(CW*CH);
- for(let i=0;i<CW;i++){const x=i*CELL+CELL/2,top=Math.floor(baseHeight(x,map)/CELL);
+ for(let i=0;i<CW;i++){
+  const x=i*CELL+CELL/2,top=Math.floor(baseHeight(x,map)/CELL);
   for(let j=top;j<CH;j++){
    const sym=Math.min(i,CW-1-i),h=(Math.imul(sym+1,73856093)^Math.imul(j+1,19349663)^seed)>>>0;
-   g[j*CW+i]=(j>top+36&&((h^(h>>>13))%100)<25)?2:1;
+   g[j*CW+i]=(j>top+36&&((h^(h>>>13))%100)<25)?MATERIAL.ROCK:MATERIAL.DIRT;
   }
  }
- const rect=(x1,y1,x2,y2,m)=>{for(let y=Math.floor(y1/CELL);y<=Math.floor(y2/CELL);y++)for(let x=Math.floor(x1/CELL);x<=Math.floor(x2/CELL);x++)set(g,x,y,m);};
- for(let side=0;side<2;side++){const mx=x=>side?WIDTH-x:x;
-  if(map==="forts"){
-   const left=Math.min(mx(210),mx(275)),right=Math.max(mx(210),mx(275)),ground=baseHeight(mx(242),map);
-   rect(left,ground-83,right,ground-70,3);rect(side?right-9:left,ground-83,side?right:left+9,ground-10,3);
-   rect(Math.min(mx(350),mx(375)),baseHeight(mx(360),map)-55,Math.max(mx(350),mx(375)),baseHeight(mx(360),map)-6,2);
-  }else if(map==="canyon"){
-   const x=mx(330),ground=baseHeight(x,map);rect(x-10,ground-110,x+10,ground-5,2);
-   const xx=mx(180),gg=baseHeight(xx,map);rect(xx-28,gg-100,xx+28,gg-89,2);
-  }else{
-   const left=Math.min(mx(205),mx(340)),right=Math.max(mx(205),mx(340)),ground=baseHeight(mx(270),map);
-   rect(left,ground+18,right,ground+67,0);
-   rect(side?left:right-14,ground-5,side?left+14:right,ground+67,0);
-   rect(left,ground+67,right,ground+75,3);
+ const rect=(x1,y1,x2,y2,m)=>{
+  for(let y=Math.floor(y1/CELL);y<=Math.floor(y2/CELL);y++)
+   for(let x=Math.floor(x1/CELL);x<=Math.floor(x2/CELL);x++)set(g,x,y,m);
+ };
+ // Build only the left half and reflect its exact cells onto Blue's side.
+ // All slots are separated by at least 80px, eliminating spawn-time splash stacking.
+ if(map==="forts"){
+  for(const slot of [2,5]){
+   const x=SPAWN_X[slot-1],ground=baseHeight(x,map);
+   rect(x-35,ground-84,x+35,ground-72,3); // concrete roof
+   rect(x-35,ground-72,x-25,ground-8,3); // rear wall, opening faces centre
+  }
+  {const x=SPAWN_X[2],ground=baseHeight(x,map);
+   rect(x+31,ground-64,x+53,ground-8,2); // tall rock mesa in front of S3
+  }
+  {const x=SPAWN_X[3],ground=baseHeight(x,map);
+   rect(x-27,ground-24,x+27,ground+36,0); // dug trench at S4
+  }
+ }else if(map==="canyon"){
+  for(const slot of [1,3,4]){
+   const x=SPAWN_X[slot-1],ground=baseHeight(x,map);
+   rect(x+30,ground-94,x+42,ground-10,2); // rock pillar in front
+   rect(x-15,ground-106,x+43,ground-97,2); // overhead ledge
+  }
+ }else if(map==="hollow"){
+  for(const slot of [3,4]){
+   const x=SPAWN_X[slot-1],ground=baseHeight(x,map);
+   rect(x-34,ground+13,x+52,ground+67,0); // underground pocket
+   rect(x-34,ground+69,x+52,ground+78,3); // unbreakable floor support
+   // A corridor and outlet allow actual projectiles to exit into daylight.
+   rect(x+52,ground+16,x+78,ground+64,0);
+   rect(x+72,ground-12,x+83,ground+64,0);
   }
  }
- // Exact material mirroring avoids 4px grid-quantization bias between teams.
- for(let y=0;y<CH;y++)for(let x=0;x<CW/2;x++)g[y*CW+(CW-1-x)]=g[y*CW+x];
- // Preserve concrete-only border as a collision rule, rather than cells.
+ for(let row=0;row<CH;row++)for(let x=0;x<CW/2;x++)g[row*CW+(CW-1-x)]=g[row*CW+x];
  return g;
 }
 export function surfaceBelow(g,x,y=0){const col=clamp(Math.floor(x/CELL),0,CW-1);
  for(let row=clamp(Math.floor(y/CELL),0,CH-1);row<CH;row++)if(g[row*CW+col])return row*CELL;
  return HEIGHT;
 }
-export function spawn(g,side,slot,map="forts"){const x=side===0?116+(slot-1)*56:WIDTH-(116+(slot-1)*56),y=baseHeight(x,map)-12;return {x,y};}
+export function spawn(g,side,slot,map="forts"){
+ const left=SPAWN_X[Math.max(0,Math.min(5,slot-1))];
+ const x=side===0?left:WIDTH-left,top=baseHeight(x,map);
+ // Tunnel spawns stand on their dug floor; surface spawns stand below their roof.
+ const searchY=map==="hollow"&&(slot===3||slot===4)?top+20:top-14;
+ return {x,y:surfaceBelow(g,x,searchY)-12};
+}
 export function coverMultiplier(g,x,y,tank){
  const sample=[[0,0],[-20,-10],[20,-10],[-20,10],[20,10]];
  let blocked=0;
@@ -85,28 +109,67 @@ function carve(g,cx,cy,r,kind,tanks){
   else if(m===1)g[ix]=0;else if(m===2)g[ix]=4;else if(m===4)g[ix]=5;else if(m===5)g[ix]=0;
  }
 }
+function roofTop(g,x,y){
+ let row=Math.floor((y-17)/CELL),col=clamp(Math.floor(x/CELL),0,CW-1);
+ if(row<0||!g[row*CW+col])return y;
+ while(row>0&&g[(row-1)*CW+col])row--;
+ return row*CELL-8;
+}
+export function napalmPool(g,x,y,reach=70){
+ const startY=surfaceBelow(g,x,Math.max(0,y-23)),segments=[{x,y:startY}],steps=Math.floor(reach/CELL);
+ if(startY>=HEIGHT||at(g,x,startY+2)===3)return [];
+ for(const direction of [-1,1]){
+  let previous=startY;
+  for(let i=1;i<=steps;i++){
+   const px=x+i*CELL*direction;
+   if(px<0||px>=WIDTH)break;
+   const top=surfaceBelow(g,px,Math.max(0,previous-16));
+   if(top>=HEIGHT||top<previous-6||top>previous+28||at(g,px,top+2)===3)break;
+   segments.push({x:px,y:top});previous=top;
+  }
+ }
+ return segments.sort((a,b)=>a.x-b.x);
+}
+export function quakePath(g,x,y,range=200){
+ const root=surfaceBelow(g,x,Math.max(0,y-20));
+ if(root>=HEIGHT||at(g,x,root+2)===3)return [];
+ const result=[{x,y:root}];
+ for(const dir of [-1,1]){
+  let prior=root;
+  for(let i=CELL;i<=range;i+=CELL){
+   const xx=x+i*dir;
+   if(xx<0||xx>=WIDTH)break;
+   const yy=surfaceBelow(g,xx,Math.max(0,prior-16));
+   if(yy>=HEIGHT||yy<prior-14||yy>prior+24||at(g,xx,yy+2)===3)break;
+   result.push({x:xx,y:yy});prior=yy;
+  }
+ }
+ return result;
+}
 function settle(g,tanks,totals){
  for(const t of tanks){if(!t.alive)continue;
   const before=t.y,under=surfaceBelow(g,t.x,Math.max(0,t.y+10)),foot=under-12;
   if(foot>t.y){t.y=Math.min(HEIGHT-14,foot);const drop=t.y-before;if(drop>40)applyDamage(t,Math.min(20,(drop-40)/4),totals);}
+  if(t.buried&&!at(g,t.x,t.y-19)&&!at(g,t.x-18,t.y-19)&&!at(g,t.x+18,t.y-19))t.buried=false;
   // If terrain is placed around the tank, raise onto clear surface.
   if(at(g,t.x,t.y)||at(g,t.x-17,t.y)||at(g,t.x+17,t.y)){let safe=t.y;while(safe>15&&(at(g,t.x,safe)||at(g,t.x-17,safe)||at(g,t.x+17,safe)))safe-=4;t.y=safe;}
  }
 }
 export function moveTank(g,tanks,id,dx,fuel){
- const t=tanks.find(p=>p.id===id);if(!t?.alive||fuel<=0)return {moved:0};
+ const t=tanks.find(p=>p.id===id);if(!t?.alive||t.buried||fuel<=0)return {moved:0};
  const step=Math.sign(dx)*Math.min(8,Math.abs(dx),fuel);if(!step)return {moved:0};
  const nx=clamp(t.x+step,35,WIDTH-35),dy=surfaceBelow(g,nx,Math.max(0,t.y-28))-12-t.y;
  if(Math.abs(dy)>Math.abs(step)*Math.tan(55*Math.PI/180)+3||tanks.some(p=>p.alive&&p.id!==id&&Math.abs(p.x-nx)<44&&Math.abs(p.y-(t.y+dy))<28)||at(g,nx,t.y-15))return {moved:0};
- t.x=nx;t.y+=dy;return {moved:Math.abs(nx-(nx-step))};
+ const moved=Math.abs(nx-t.x);t.x=nx;t.y+=dy;return {moved};
 }
 export function simulateVolley({grid,players,shots,wind=0,seed=1}){
- const g=grid.slice(),tanks=players.map(p=>({...p})),totals={},damageBy={},events=[],trace=[];
+ const g=grid.slice(),tanks=players.map(p=>({...p})),totals={},damageBy={},killsBy={},events=[],trace=[];
  const prng=rng(seed),live=[],step=1/120;let serial=0;
  const launch=(p,shot,delta=0,kind=shot.weapon)=>{
   const weapon=WEAPONS[kind]||WEAPONS.single;
   const a=(shot.angle+delta)*Math.PI/180,v=(250+7.5*shot.power)*(kind==="rail"?1.6:1);
-  const sx=p.x+26*Math.cos(a),sy=p.y-26*Math.sin(a);
+  const originY=p.buried?roofTop(g,p.x,p.y):p.y;
+  const sx=p.x+26*Math.cos(a),sy=originY-26*Math.sin(a);
   live.push({id:serial++,owner:p.id,team:p.team,kind,x:sx,y:sy,vx:v*Math.cos(a),vy:-v*Math.sin(a),r:4,mode:"air",bounce:0,distance:0,age:0,alive:true,split:false,seed:prng()});
  };
  for(const s of shots){const p=tanks.find(t=>t.id===s.playerId&&t.alive);if(!p)continue;
@@ -114,31 +177,49 @@ export function simulateVolley({grid,players,shots,wind=0,seed=1}){
   else launch(p,s);
  }
  let maxT=0;
+ const award=(projectile,target,raw)=>{
+  const wasAlive=target.alive,actual=applyDamage(target,raw,totals);
+  if(target.team!==projectile.team)damageBy[projectile.owner]=(damageBy[projectile.owner]||0)+actual;
+  if(wasAlive&&!target.alive&&target.team!==projectile.team)killsBy[projectile.owner]=(killsBy[projectile.owner]||0)+1;
+  return actual;
+ };
  const detonate=(p,t)=>{
   if(!p.alive)return;p.alive=false;const w=WEAPONS[p.kind],x=clamp(p.x,0,WIDTH),y=clamp(p.y,0,HEIGHT);
   events.push({type:"boom",t:+t.toFixed(3),x,y,kind:p.kind,r:w.radius});
   if(p.kind==="quake"){
-   for(const target of tanks){if(!target.alive||Math.abs(target.x-x)>200||Math.abs(target.y-y)>100)continue;
-    let connected=true;for(let q=Math.min(x,target.x);q<=Math.max(x,target.x);q+=4){const c=at(g,q,surfaceBelow(g,q,Math.max(0,target.y-30))+1);if(c===3||c===0){connected=false;break;}}
-    if(connected){const amount=applyDamage(target,w.damage*(target.team===p.team?.5:1),totals);damageBy[p.owner]=(damageBy[p.owner]||0)+(target.team===p.team?0:amount);}
+   const path=quakePath(g,x,y);
+   events.push({type:"shock",t:+t.toFixed(3),points:path});
+   for(const target of tanks){
+    if(!target.alive)continue;
+    const near=path.some(point=>Math.abs(point.x-target.x)<CELL+8&&Math.abs(point.y-(target.y+12))<17);
+    if(near)award(p,target,w.damage*(target.team===p.team?.5:1));
    }
   }else if(p.kind==="napalm"){
-   for(const target of tanks){if(!target.alive)continue;const yDiff=Math.abs(target.y-surfaceBelow(g,target.x,Math.max(0,target.y-25))+12);
-    if(Math.abs(target.x-x)<=70&&yDiff<35){
-     const amount=applyDamage(target,18*(target.team===p.team?.5:1)*coverMultiplier(g,x,y,target),totals);
-     damageBy[p.owner]=(damageBy[p.owner]||0)+(target.team===p.team?0:amount);
+   const pool=napalmPool(g,x,y);
+   events.push({type:"pool",t:+t.toFixed(3),points:pool});
+   for(const target of tanks){
+    if(!target.alive)continue;
+    if(pool.some(point=>Math.abs(point.x-target.x)<12&&Math.abs(point.y-(target.y+12))<18)){
+     award(p,target,18*(target.team===p.team?.5:1));
     }
    }
    carve(g,x,y,20,"blast",tanks);
   }else{
-   for(const target of tanks){if(!target.alive||w.damage===0)continue;
+   for(const target of tanks){
+    if(!target.alive||w.damage===0)continue;
     const dist=Math.hypot(target.x-x,target.y-y);
-    if(dist>w.radius+20)continue;
+    if(dist>w.radius+12)continue;
     const fall=clamp(1-Math.max(0,dist-12)/w.radius,0,1);
-    const amount=applyDamage(target,w.damage*fall*coverMultiplier(g,x,y,target)*(target.team===p.team?.5:1),totals);
-    damageBy[p.owner]=(damageBy[p.owner]||0)+(target.team===p.team?0:amount);
+    award(p,target,w.damage*fall*coverMultiplier(g,x,y,target)*(target.team===p.team?.5:1));
    }
-   carve(g,x,y,w.radius,p.kind==="dirt"?"dirt":p.kind==="quake"?"none":p.kind==="excavator"?"excavator":"blast",tanks);
+   carve(g,x,y,w.radius,p.kind==="dirt"?"dirt":p.kind==="excavator"?"excavator":"blast",tanks);
+   if(p.kind==="dirt"){
+    for(const target of tanks)if(target.alive&&Math.hypot(target.x-x,target.y-y)<=42){
+     const roof=at(g,target.x,target.y-19);
+     const left=at(g,target.x-24,target.y),right=at(g,target.x+24,target.y);
+     if(roof&&(left||right))target.buried=true;
+    }
+   }
   }
   settle(g,tanks,totals);
  };
@@ -156,9 +237,9 @@ export function simulateVolley({grid,players,shots,wind=0,seed=1}){
     p.vx+=(wind*(drag/.00035)-drag*mag*p.vx)*step;
     p.vy+=(500-drag*mag*p.vy)*step;
     const lastX=p.x,lastY=p.y;p.x+=p.vx*step;p.y+=p.vy*step;
-    if(p.kind==="splitter"&&!p.split&&p.vy>=0){p.alive=false;p.split=true;for(let i=-2;i<=2;i++){const a=Math.atan2(p.vy,p.vx)+i*.105;live.push({...p,id:serial++,x:p.x,y:p.y,vx:Math.cos(a)*Math.max(180,mag*.75),vy:Math.sin(a)*Math.max(180,mag*.75),split:true,alive:true,kind:"splitter"});}continue;}
+    if(p.kind==="splitter"&&!p.split&&p.vy>=0){p.alive=false;p.split=true;for(let i=-2;i<=2;i++){const a=Math.atan2(p.vy,p.vx)+i*(Math.PI/60);live.push({...p,id:serial++,x:p.x,y:p.y,vx:Math.cos(a)*Math.max(180,mag*.75),vy:Math.sin(a)*Math.max(180,mag*.75),split:true,alive:true,kind:"splitter"});}continue;}
     if(p.x<0||p.x>=WIDTH||p.y<0){p.alive=false;continue;}
-    let hitTank=tanks.find(k=>k.alive&&k.id!==p.owner&&Math.abs(k.x-p.x)<22&&Math.abs(k.y-p.y)<12);
+    let hitTank=tanks.find(k=>k.alive&&(k.id!==p.owner||p.age>.075)&&Math.abs(k.x-p.x)<22&&Math.abs(k.y-p.y)<12);
     if(hitTank){detonate(p,t);continue;}
     // Swept collision: sample every 2 px along this timestep, including fast Rail Slugs.
     // This prevents thin walls from being skipped between 120 Hz samples.
@@ -187,5 +268,5 @@ export function simulateVolley({grid,players,shots,wind=0,seed=1}){
   }
  }
  for(const p of live)if(p.alive)p.alive=false;
- return {grid:g,players:tanks,events,trace,damageBy,totals,duration:maxT};
+ return {grid:g,players:tanks,events,trace,damageBy,killsBy,totals,duration:maxT};
 }
