@@ -6,12 +6,19 @@
  */
 export function cameraTargetForTrace(trace,elapsed,viewportTop=172){
  if(!Array.isArray(trace)||!Number.isFinite(elapsed)||elapsed<0)return 0;
- let high=Infinity;
+ // Each projectile's newest sample supersedes older positions; otherwise
+ // the camera can momentarily chase a ghost at the previous high point
+ // while the real shell is already descending.
+ const latest=new Map();
  for(const point of trace){
   const time=point?.[0];
   if(!Number.isFinite(time))continue;
   if(time>elapsed)break;
-  if(elapsed-time>.125)continue;
+  latest.set(point[1],point);
+ }
+ let high=Infinity;
+ for(const point of latest.values()){
+  if(elapsed-point[0]>.125)continue; // no longer in flight
   const y=point[3];
   if(Number.isFinite(y)&&y<high)high=y;
  }
