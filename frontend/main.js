@@ -110,7 +110,7 @@ function squadHTML(mates){return `<div class="eyebrow">SQUAD COORDINATION / PRIV
 function renderPhone(){
  const r=state,p=r.you;if(!p){$("phoneContent").textContent="Joining room…";return;}
  const firing=r.phase==="aim"&&!r.paused&&p.alive&&p.team===r.turn.team&&p.squad===r.turn.squad;
- const key=[r.phase,r.turnIndex,r.paused,firing,p.locked,p.alive].join("/");
+ const key=[r.phase,r.turnIndex,r.paused,firing,p.locked,p.alive,!!p.buried].join("/");
  if(controlKey===key){if($("hpValue"))$("hpValue").textContent=p.hp+" / 120 HP";if($("hpBar"))$("hpBar").style.width=p.hp/120*100+"%";if($("squadPanel")&&r.squadAim)$("squadPanel").innerHTML=squadHTML(r.squadAim);const fuel=$("fuelValue");if(fuel)fuel.textContent=Math.round(p.fuel)+" PX FUEL";return;}
  controlKey=key;
  if(firing&&Number($("phoneContent").dataset.turn)!==r.turnIndex)localAim={angle:p.team===0?45:135,power:60,weapon:"single"};
@@ -123,7 +123,7 @@ function renderPhone(){
   if(!entries.some(([k])=>k===localAim.weapon))localAim.weapon="single";
   body=`<div class="phone-controls"><div class="control-box"><div class="control-top"><span class="control-label">TURRET ANGLE</span><span class="control-value" id="angleValue">${localAim.angle}°</span></div><input class="range" type="range" id="angle" min="0" max="180" step="1" value="${localAim.angle}"><div class="fine-row"><button data-fine="-1">− 1°</button><button data-fine="1">+ 1°</button></div></div>
   <div class="control-box"><div class="control-top"><span class="control-label">LAUNCH POWER</span><span class="control-value" id="powerValue">${localAim.power}%</span></div><input class="range" type="range" id="power" min="0" max="100" step="1" value="${localAim.power}"></div>
-  <div class="control-box"><div class="control-top"><span class="control-label">TANK MOVEMENT</span><span class="small-note" id="fuelValue">${Math.round(p.fuel)} PX FUEL</span></div><div class="fine-row"><button class="move-button" data-move="-1">◀ LEFT</button><button class="move-button" data-move="1">RIGHT ▶</button></div></div>
+  <div class="control-box"><div class="control-top"><span class="control-label">TANK MOVEMENT${p.buried?" / BURIED":""}</span><span class="small-note" id="fuelValue">${Math.round(p.fuel)} PX FUEL</span></div><div class="fine-row"><button class="move-button" data-move="-1" ${p.buried?"disabled":""}>◀ LEFT</button><button class="move-button" data-move="1" ${p.buried?"disabled":""}>RIGHT ▶</button></div></div>
   <div class="control-box"><div class="control-top"><span class="control-label">CHOOSE YOUR WEAPON</span><span class="small-note">SINGLE SHOT ∞</span></div><div class="weapon-grid">${entries.map(([k,w])=>`<button class="weapon-card ${k===localAim.weapon?"active":""}" data-weapon="${k}"><b>${esc(w.name)}</b><small>${k==="single"?"∞":p.inventory[k]+" LEFT"}</small></button>`).join("")}</div></div>
   <button id="lock" class="lock-button ${p.locked?"locked":""}">${p.locked?"✓ LOCKED IN / TAP TO EDIT":"LOCK IN YOUR SHOT →"}</button><div class="squadmates" id="squadPanel">${squadHTML(r.squadAim||[])}</div></div>`;
  }else body=`<div class="spectate"><div class="spectate-icon">${p.alive?"◎":"✕"}</div><h2>${r.phase==="replay"?"WATCH THE SKIES.":r.paused?"GAME PAUSED":p.alive?"STAND BY.":"TANK DESTROYED."}</h2><p>${p.alive?"Watch the TV. Your squad will fire soon.":"Spectate until the rematch."}</p></div>`;
@@ -154,7 +154,7 @@ function drawTank(c,p){
  c.fillStyle="#bfc9d2";for(let dx=-12;dx<=12;dx+=12){c.beginPath();c.arc(dx,10,4,0,7);c.fill();}
  c.fillStyle=color;c.beginPath();c.roundRect(-12,-15,24,14,6);c.fill();c.save();c.translate(0,-10);c.rotate(p.team===0?-.65:-2.5);c.fillStyle="#b9ccdc";c.fillRect(0,-3,29,6);c.restore();
  c.textAlign="center";c.fillStyle="#fff9e6";c.shadowColor="#000";c.shadowBlur=5;c.font="bold 15px Arial";c.fillText((p.name||"TANK").slice(0,12),0,-31);c.shadowBlur=0;
- c.fillStyle="#101d2d";c.fillRect(-24,-25,48,6);c.fillStyle=color;c.fillRect(-23,-24,46*p.hp/120,4);c.restore();
+ c.fillStyle="#101d2d";c.fillRect(-24,-25,48,6);c.fillStyle=color;c.fillRect(-23,-24,46*p.hp/120,4);if(p.buried){c.font="bold 12px Arial";c.fillStyle="#f7d78d";c.fillText("BURIED",0,-45);}c.restore();
 }
 function drawScene(canvas,g,tanks,play,now,mini=false,map="forts"){
  const c=canvas.getContext("2d");c.clearRect(0,0,WIDTH,HEIGHT);
@@ -169,7 +169,18 @@ function drawScene(canvas,g,tanks,play,now,mini=false,map="forts"){
   for(const point of v.trace||[]){const [time,id,x,y,kind]=point;if(time>t||time<t-.47)continue;c.globalAlpha=.6*(1-(t-time)/.47);c.fillStyle=WEAPONS[kind]?.color||"#fff";c.beginPath();c.arc(x,y,4,0,7);c.fill();}c.globalAlpha=1;
   const active=new Map();for(const point of v.trace||[])if(point[0]<=t)active.set(point[1],point);
   for(const p of active.values()){if(t-p[0]>.23)continue;c.save();c.shadowBlur=19;c.shadowColor=WEAPONS[p[4]]?.color||"#ffe1a2";c.fillStyle=WEAPONS[p[4]]?.color||"#ffe1a2";c.beginPath();c.arc(p[2],p[3],6,0,7);c.fill();c.restore();}
-  for(const e of v.events||[]){const age=t-e.t;if(age<0||age>.8)continue;const radius=Math.max(10,e.r*(.2+age));const rad=c.createRadialGradient(e.x,e.y,0,e.x,e.y,radius);rad.addColorStop(0,"rgba(255,241,180,"+(.9-age)+")");rad.addColorStop(.5,"rgba(255,144,71,"+(.7-age*.8)+")");rad.addColorStop(1,"#fa661100");c.fillStyle=rad;c.beginPath();c.arc(e.x,e.y,radius,0,7);c.fill();}
+  for(const e of v.events||[]){
+   const age=t-e.t;if(age<0||age>.9)continue;
+   if(e.type==="pool"||e.type==="shock"){
+    c.save();c.globalAlpha=Math.max(0,1-age/.9);c.lineWidth=e.type==="pool"?8:5;
+    c.strokeStyle=e.type==="pool"?"#ff672d":"#fce19b";c.shadowBlur=18;c.shadowColor=c.strokeStyle;
+    c.beginPath();for(const point of e.points||[]){c.moveTo(point.x-2,point.y-3);c.lineTo(point.x+2,point.y-3);}c.stroke();c.restore();continue;
+   }
+   if(e.type!=="boom")continue;
+   const radius=Math.max(10,e.r*(.2+age));const rad=c.createRadialGradient(e.x,e.y,0,e.x,e.y,radius);
+   rad.addColorStop(0,"rgba(255,241,180,"+(.9-age)+")");rad.addColorStop(.5,"rgba(255,144,71,"+(.7-age*.8)+")");rad.addColorStop(1,"#fa661100");
+   c.fillStyle=rad;c.beginPath();c.arc(e.x,e.y,radius,0,7);c.fill();
+  }
  }
  for(const p of actors||[])drawTank(c,p);
  if(mini){const x=640+Math.cos(now/1000)*190,y=254-Math.abs(Math.sin(now/950))*125;c.shadowColor="#f7d477";c.shadowBlur=22;c.fillStyle="#ffe1a0";c.beginPath();c.arc(x,y,6,0,7);c.fill();c.shadowBlur=0;}
