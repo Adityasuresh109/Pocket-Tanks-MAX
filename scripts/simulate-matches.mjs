@@ -85,11 +85,18 @@ async function play({seed,noise,match}){
  const alive=[0,1].map(s=>r.players.filter(p=>p.team===s&&p.alive).length);
  return {seed,noise,match,turns:r.turnIndex,winner:r.winner,winType:alive.includes(0)?"wipe":r.turnIndex<40?"mercy":"limit",hp,alive,startingTeam:(match-1)%2,shots:r.players.reduce((n,p)=>n+p.stats.shots,0),finalTable:r.players.map(p=>({id:p.id,team:p.team,hp:p.hp,alive:p.alive,damage:p.stats.damage})),history};
 }
-const cases=[{seed:101,noise:0.5,match:1},{seed:202,noise:1.5,match:2},{seed:303,noise:2.5,match:3}];
+const cases=[101,202,303,404,505,606,707,808,909,111,222,333].map((seed,i)=>({seed,noise:[0.5,1.5,2.5][i%3],match:i%3+1}));
 let failed=0;
 for(const spec of cases){
  const res=await play(spec);
  console.log("MATCH RESULT",JSON.stringify({...res,history:res.history.filter(p=>[12,20,26,30,35,40].includes(p.turn))}));
- if(res.turns>=40||res.winType==="limit")failed++;
+ const high=Math.max(...res.hp),low=Math.min(...res.hp);
+ const decisive=res.winType==="wipe"||(res.winType==="mercy"&&(high-low)>=50&&high>=low*1.55);
+ if(res.turns<20||res.turns>=40||res.winType==="limit"||!decisive){
+  failed++;console.error("PACING FAILURE seed",spec.seed,"turns",res.turns,"victory",res.winType,"HP",res.hp);
+ }
 }
-if(failed)console.log("PACING DIAGNOSTIC:",failed,"out of 3 matches reached 40-turn decision. This cannot be called check 6 passed.");
+if(failed){
+ console.error("PACING FAILED:",failed,"of",cases.length,"matches lacked a decisive victory inside 40 squad turns.");
+ process.exitCode=1;
+}else console.log("PACING PASSED:",cases.length,"of",cases.length,"seeded 6v6 matches finished decisively before turn 40.");
