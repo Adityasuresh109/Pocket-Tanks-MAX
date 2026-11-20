@@ -75,6 +75,13 @@ test("only firing-squad phones can receive aim and weapon data during aiming",as
  assert.ok(!JSON.stringify(hostState).includes('"power":63'));
  assert.ok(!JSON.stringify(hostState).includes('"weapon":"bertha"'));
  assert.deepEqual(Object.keys(hostState.turretAngles.find(t=>t.id===shooter.id)).sort(),["angle","id"]);
+ // The TV changes immediately with each angle input, without waiting for lock-in.
+ await room.webSocketMessage(ownWS,JSON.stringify({type:"aim",angle:119,power:7,weapon:"rail"}));
+ assert.equal(last(hostWS).turretAngles.find(t=>t.id===shooter.id).angle,119);
+ assert.equal(last(enemyWS).turretAngles,undefined);
+ assert.equal(last(otherWS).turretAngles,undefined);
+ assert.ok(!JSON.stringify(last(hostWS)).includes('"power":7'));
+ assert.ok(!JSON.stringify(last(hostWS)).includes('"weapon":"rail"'));
 });
 test("skipping a stuck turn rotates to other team and host can pause/resume countdown",async()=>{
  const {room}=await roomWith(2);
