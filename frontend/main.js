@@ -4,7 +4,7 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const args=new URLSearchParams(location.search), SERVER=(window.BARRAGE_WORKER_URL||"https://pocket-tanks-max.adityasuresh2110.workers.dev").replace(/\/$/,""),WS=SERVER.replace(/^http/,"ws");
 const PAGE=location.origin+location.pathname,MAPS={forts:"THE FORTS",canyon:"CANYON CROSS",hollow:"THE HOLLOW"};
-const team=n=>n===0?"RED":"BLUE",playerKey=c=>"barrage-seat-"+c,hostKey=c=>"barrage-host-"+c;
+const team=n=>n===0?"RED":"BLUE",turnLabel=r=>r.turn.squad===2?team(r.turn.team)+" / FINAL BARRAGE":team(r.turn.team)+" / SQUAD "+(r.turn.squad?"B":"A"),playerKey=c=>"barrage-seat-"+c,hostKey=c=>"barrage-host-"+c;
 let role="",code="",secret="",seatId="",state=null,ws=null,retry=0,reconnectTimer=0,roomFailed=false;
 let localAim={angle:45,power:60,weapon:"single"},controlKey="",grid=null,terrainBitmap=null,terrainRef=null;
 let muted=localStorage.getItem("barrage-muted")==="yes",audio=null,playback=null,seenVolley=-1,drawTime=0;
@@ -59,7 +59,7 @@ function renderHost(){
  $("timerPill").textContent=r.phase==="lobby"?"LOBBY":r.phase==="over"?"GAME OVER":r.paused?"PAUSED":r.phase==="replay"?"IMPACT":seconds()===null?"∞":seconds()+"S";
  $("fieldCaption").textContent=MAPS[r.map]+" / "+r.players.length+" TANKS";
  $("turnWind").textContent="WIND "+(r.wind<0?"◀ ":r.wind>0?"▶ ":"· ")+Math.abs(r.wind);
- const banner=$("stageBanner");banner.classList.toggle("hidden",r.phase==="lobby");banner.textContent=r.phase==="over"?team(r.winner)+" WINS":r.paused?"PAUSED":r.phase==="replay"?"SHELLS IN FLIGHT":team(r.turn.team)+" SQUAD "+(r.turn.squad?"B":"A")+" · TAKE AIM";
+ const banner=$("stageBanner");banner.classList.toggle("hidden",r.phase==="lobby");banner.textContent=r.phase==="over"?team(r.winner)+" WINS":r.paused?"PAUSED":r.phase==="replay"?"SHELLS IN FLIGHT":turnLabel(r)+" · TAKE AIM";
  $("volleyOverlay").classList.toggle("hidden",r.phase!=="replay");
  const aside=$("hostSide");let key;
  if(r.phase==="lobby"){
@@ -93,7 +93,7 @@ function renderHost(){
  }else{
   key=["match",r.turnIndex,r.phase,r.paused,r.players.map(p=>p.hp+":"+p.locked).join("/")].join("/");
   if(aside.dataset.key===key)return;aside.dataset.key=key;
-  aside.innerHTML=`<div class="eyebrow">LIVE MATCH / BEST OF ${r.series.bestOf}</div><h3>${team(r.turn.team)} SQUAD ${r.turn.squad?"B":"A"}</h3>
+  aside.innerHTML=`<div class="eyebrow">LIVE MATCH / BEST OF ${r.series.bestOf}</div><h3>${turnLabel(r)}</h3>
    <p>${r.phase==="replay"?"Shots are flying. Wait for impact.":r.paused?"Paused by host.":"Commanders are choosing shots."}</p>
    <div class="scores"><span class="red">${r.series.red} RED</span><span class="blue">BLUE ${r.series.blue}</span></div><div class="divider"></div><div class="eyebrow">TANK STATUS</div>
    <div class="roster-scroll">${r.players.map(p=>`<div class="playerline"><span class="teamchip ${p.team?"blue":"red"}">${team(p.team)} ${p.squad?"B":"A"}</span><strong>${esc(p.name)}</strong><small>${p.alive?p.hp+" HP":"OUT"}</small><small>${p.locked?"✓":""}</small></div>`).join("")}</div>
@@ -109,12 +109,12 @@ function renderHost(){
 function squadHTML(mates){return `<div class="eyebrow">SQUAD COORDINATION / PRIVATE</div>${mates.length?mates.map(m=>`<div class="playerline"><strong>${esc(m.name)}</strong><small>${m.angle===undefined?"AIMING…":m.angle+"° / "+m.power+" / "+esc(WEAPONS[m.weapon]?.name||"Single Shot")}</small><small>${m.locked?"✓":""}</small></div>`).join(""):"<p class='micro'>Your squadmates appear here.</p>"}`;}
 function renderPhone(){
  const r=state,p=r.you;if(!p){$("phoneContent").textContent="Joining room…";return;}
- const firing=r.phase==="aim"&&!r.paused&&p.alive&&p.team===r.turn.team&&p.squad===r.turn.squad;
+ const firing=r.phase==="aim"&&!r.paused&&p.alive&&p.team===r.turn.team&&(r.turn.squad===2||p.squad===r.turn.squad);
  const key=[r.phase,r.turnIndex,r.paused,firing,p.locked,p.alive,!!p.buried].join("/");
  if(controlKey===key){if($("hpValue"))$("hpValue").textContent=p.hp+" / 120 HP";if($("hpBar"))$("hpBar").style.width=p.hp/120*100+"%";if($("squadPanel")&&r.squadAim)$("squadPanel").innerHTML=squadHTML(r.squadAim);const fuel=$("fuelValue");if(fuel)fuel.textContent=Math.round(p.fuel)+" PX FUEL";return;}
  controlKey=key;
  if(firing&&Number($("phoneContent").dataset.turn)!==r.turnIndex)localAim={angle:p.team===0?45:135,power:60,weapon:"single"};
- const label=r.phase==="lobby"?"WAITING ROOM":r.phase==="over"?"MATCH COMPLETE":r.phase==="replay"?"SHELLS IN FLIGHT":r.paused?"MATCH PAUSED":team(r.turn.team)+" SQUAD "+(r.turn.squad?"B":"A");
+ const label=r.phase==="lobby"?"WAITING ROOM":r.phase==="over"?"MATCH COMPLETE":r.phase==="replay"?"SHELLS IN FLIGHT":r.paused?"MATCH PAUSED":turnLabel(r);
  let body="";
  if(r.phase==="lobby")body=`<div class="spectate"><div class="spectate-icon">⌖</div><h2>YOU'RE ENLISTED.</h2><p>Waiting for the host. Keep your phone open.</p><div class="room-code" style="font-size:35px">${esc(r.code)}</div></div>`;
  else if(r.phase==="over")body=`<div class="spectate"><div class="spectate-icon">★</div><h2 style="color:var(--gold)">${team(r.winner)} WINS!</h2><p>${p.team===r.winner?"GLORIOUS VICTORY":"A NOBLE DEFEAT"}</p><div class="scores"><span class="red">RED ${r.series.red}</span><span class="blue">BLUE ${r.series.blue}</span></div><p>${p.stats?.shots||0} SHOTS · ${p.stats?.damage||0} DAMAGE · ${p.stats?.kills||0} KILLS</p></div>`;
