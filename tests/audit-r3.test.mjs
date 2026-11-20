@@ -29,10 +29,10 @@ test("The Forts best-of series alternates the starting side Red/Blue/Red",async(
   r.room.phase="over";
  }
 });
-test("at turn 26, living tanks combine into one firing group, including both former squads",async()=>{
+test("at turn 20, living tanks combine into one firing group, including both former squads",async()=>{
  const r=await room(6);await r.startMatch();
- for(let i=0;i<26;i++){await r.fire();await r.alarm();}
- assert.equal(r.room.turnIndex,26);
+ for(let i=0;i<20;i++){await r.fire();await r.alarm();}
+ assert.equal(r.room.turnIndex,20);
  assert.equal(r.room.turn.squad,2);
  assert.equal(r.firing().length,6);
  const formerA=r.room.players.find(p=>p.team===r.room.turn.team&&p.squad===0);
@@ -43,7 +43,7 @@ test("at turn 26, living tanks combine into one firing group, including both for
 });
 test("combined-team secret aim is visible only to that team, never enemy or host",async()=>{
  const r=await room(4);await r.startMatch();
- r.room.turnIndex=26;r.room.turn.squad=2;
+ r.room.turnIndex=20;r.room.turn.squad=2;
  const team=r.room.players.filter(p=>p.team===r.room.turn.team),enemy=r.room.players.find(p=>p.team!==r.room.turn.team);
  const sockets=[];
  const mk=(role,id)=>{const ws={deserializeAttachment:()=>({role,id,gridEpoch:-1}),serializeAttachment(){},send(x){this.message=JSON.parse(x);}};sockets.push(ws);return ws;};
