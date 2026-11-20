@@ -44,7 +44,7 @@ export class BarrageRoom {
  sendHost(payload){for(const ws of this.connections().filter(s=>this.attachment(s).role==="host"))this.message(ws,payload);}
  error(ws,detail){this.message(ws,{type:"error",message:detail});}
  active(){return this.room?.players.filter(p=>p.alive)||[];}
- // From turn 20 onward, all remaining tanks fire together.
+ // From turn 16 onward, all remaining tanks fire together.
  isActiveFirer(p){
   const r=this.room;
   return !!(p?.alive&&p.team===r.turn.team&&(r.turn.squad===2||p.squad===r.turn.squad));
@@ -214,7 +214,7 @@ export class BarrageRoom {
   r.phase="aim";r.paused=false;r.reason="";r.lastVolley=null;
   const team=r.turn.team;
   let squad=r.nextSquad[team];
-  if(r.turnIndex>=20){
+  if(r.turnIndex>=16){
    squad=2; // FINAL BARRAGE: all surviving tanks fire every team turn.
   }else{
    if(!r.players.some(p=>p.alive&&p.team===team&&p.squad===squad))squad=1-squad;
@@ -233,10 +233,10 @@ export class BarrageRoom {
   const r=this.room;if(r.phase!=="aim"||r.paused)return;
   r.phase="replay";r.deadline=0;await this.ctx.storage.deleteAlarm();
   const primaries=this.firing().filter(p=>p.locked).map(p=>({playerId:p.id,...p.aim}));
-  // Twinshot Finale: from turn 28, every surviving locked tank gets a
+  // Twinshot Finale: from turn 16, every surviving locked tank gets a
   // complimentary standard shell at a 2-degree offset. Damage still caps at
   // 40 HP per target per volley; no extra inventory is consumed.
-  const echoes=r.turnIndex>=28?primaries.map(s=>({
+  const echoes=r.turnIndex>=16?primaries.map(s=>({
    playerId:s.playerId,weapon:s.weapon==="bertha"?"bertha":"single",angle:Math.max(0,Math.min(180,s.angle+(s.angle<=90?2:-2))),power:s.power
   })):[];
   const shots=[...primaries,...echoes];
