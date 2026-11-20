@@ -237,10 +237,11 @@ export class BarrageRoom {
   // complimentary standard shell at a 2-degree offset. Damage still caps at
   // 40 HP per target per volley; no extra inventory is consumed.
   const echoes=r.turnIndex>=28?primaries.map(s=>({
-   playerId:s.playerId,weapon:"single",angle:Math.max(0,Math.min(180,s.angle+(s.angle<=90?2:-2))),power:s.power
+   playerId:s.playerId,weapon:s.weapon==="bertha"?"bertha":"single",angle:Math.max(0,Math.min(180,s.angle+(s.angle<=90?2:-2))),power:s.power
   })):[];
   const shots=[...primaries,...echoes];
-  for(const s of shots){const p=r.players.find(p=>p.id===s.playerId);if(s.weapon!=="single"&&p.inventory[s.weapon]>0)p.inventory[s.weapon]--;p.stats.shots++;}
+  for(const s of primaries){const p=r.players.find(p=>p.id===s.playerId);if(s.weapon!=="single"&&p.inventory[s.weapon]>0)p.inventory[s.weapon]--;p.stats.shots++;}
+  for(const s of echoes){const p=r.players.find(p=>p.id===s.playerId);p.stats.shots++;}
   const before=r.players.map(p=>({id:p.id,hp:p.hp,alive:p.alive}));
   const seed=(r.seed+r.match*1009+r.turnIndex*19)>>>0;
   const result=simulateVolley({grid:r.grid,players:r.players,shots,wind:r.wind,seed});
