@@ -4,7 +4,7 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const args=new URLSearchParams(location.search), SERVER=(window.BARRAGE_WORKER_URL||"https://pocket-tanks-max.adityasuresh2110.workers.dev").replace(/\/$/,""),WS=SERVER.replace(/^http/,"ws");
 const PAGE=location.origin+location.pathname,MAPS={forts:"THE FORTS",canyon:"CANYON CROSS",hollow:"THE HOLLOW"};
-const team=n=>n===0?"RED":"BLUE",turnLabel=r=>r.turnIndex>=28?team(r.turn.team)+" / TWINSHOT FINALE":r.turn.squad===2?team(r.turn.team)+" / FINAL BARRAGE":team(r.turn.team)+" / SQUAD "+(r.turn.squad?"B":"A"),playerKey=c=>"barrage-seat-"+c,hostKey=c=>"barrage-host-"+c;
+const team=n=>n===0?"RED":"BLUE",turnLabel=r=>r.turnIndex>=16?team(r.turn.team)+" / TWINSHOT FINALE":r.turn.squad===2?team(r.turn.team)+" / FINAL BARRAGE":team(r.turn.team)+" / SQUAD "+(r.turn.squad?"B":"A"),playerKey=c=>"barrage-seat-"+c,hostKey=c=>"barrage-host-"+c;
 let role="",code="",secret="",seatId="",state=null,ws=null,retry=0,reconnectTimer=0,roomFailed=false;
 let localAim={angle:45,power:60,weapon:"single"},controlKey="",grid=null,terrainBitmap=null,terrainRef=null;
 let muted=localStorage.getItem("barrage-muted")==="yes",audio=null,playback=null,seenVolley=-1,drawTime=0;
