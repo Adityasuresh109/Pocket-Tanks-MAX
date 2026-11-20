@@ -13,6 +13,7 @@ const sanitize=(p)=>({angle:Math.round(Math.max(0,Math.min(180,Number(p?.angle)|
 export default {
  async fetch(request,env){
   const url=new URL(request.url),path=url.pathname;
+  if(request.method==="OPTIONS")return new Response(null,{status:204,headers:{"access-control-allow-origin":"*","access-control-allow-headers":"content-type","access-control-allow-methods":"GET,POST,OPTIONS"}});
   if(path==="/health")return json({ok:true,service:"BARRAGE",version:"r1"});
   if(path==="/api/rooms"&&request.method==="POST"){
    // 6-char codes have ample entropy for ephemeral party rooms. Retry if ever allocated.
@@ -65,6 +66,9 @@ export class BarrageRoom {
     // The host never sees private aim data during the aim phase.
     view.you={role:"host"};
    }
+   const epoch=this.attachment(ws).gridEpoch??-1;
+   if(epoch===this.room.gridEpoch)view.grid=null;
+   else ws.serializeAttachment({...auth,gridEpoch:this.room.gridEpoch});
    this.message(ws,view);
   }
  }
@@ -73,7 +77,7 @@ export class BarrageRoom {
   if(path.pathname==="/init"){
    if(this.room)return json({error:"Room code already exists."},409);
    const {code,hostToken}=await request.json();
-   this.room={code,hostToken,phase:"lobby",map:"forts",players:[],series:{red:0,blue:0,bestOf:3},match:0,turnIndex:0,turn:{team:0,squad:0},nextSquad:[0,0],wind:0,deadline:0,paused:false,reason:"",grid:null,winner:null,lastVolley:null,settings:{timer:45},log:[],seed:Math.floor(Math.random()*4294967295)};
+   this.room={code,hostToken,phase:"lobby",map:"forts",players:[],series:{red:0,blue:0,bestOf:3},match:0,turnIndex:0,turn:{team:0,squad:0},nextSquad:[0,0],wind:0,deadline:0,paused:false,reason:"",gridEpoch:0,grid:null,winner:null,lastVolley:null,settings:{timer:45},log:[],seed:Math.floor(Math.random()*4294967295)};
    await this.save();return json({ok:true},201);
   }
   if(path.pathname!=="/connect")return json({error:"Not found"},404);
@@ -100,11 +104,11 @@ export class BarrageRoom {
   }
   const pair=new WebSocketPair(),client=pair[0],server=pair[1];
   this.ctx.acceptWebSocket(server);
-  server.serializeAttachment({role,id});
+  server.serializeAttachment({role,id,gridEpoch:-1});
   // Drop stale connections to the same seat after reconnect.
   for(const old of this.sock(id,role))if(old!==server)try{old.close(4001,"Session reclaimed")}catch{}
   if(seat){seat.connected=true;await this.save();this.message(server,{type:"welcome",id:seat.id,token:seat.token,code:this.room.code});}
-  else this.message(server,{type:"welcome",role:"host",code:this.room.code});
+  else {this.message(server,{type:"welcome",role:"host",code:this.room.code});if(this.room.paused&&this.room.reason==="Host disconnected — game paused."){this.room.paused=false;this.room.reason="";this.room.deadline=this.room.settings.timer?Date.now()+Math.max(1000,this.room.remaining||30000):0;await this.arm();await this.save();}}
   this.update();
   return new Response(null,{status:101,webSocket:client});
  }
@@ -162,7 +166,7 @@ export class BarrageRoom {
  firing(){const r=this.room;return r.players.filter(p=>p.alive&&p.team===r.turn.team&&p.squad===r.turn.squad);}
  async startMatch(){
   const r=this.room;if(!this.balanced())return;
-  r.match++;r.grid=generate(r.map,r.seed+r.match);r.phase="aim";r.turnIndex=0;r.turn={team:0,squad:0};r.nextSquad=[0,0];r.winner=null;r.lastVolley=null;r.log=[];
+  r.match++;r.grid=generate(r.map,r.seed+r.match);r.gridEpoch++;r.phase="aim";r.turnIndex=0;r.turn={team:0,squad:0};r.nextSquad=[0,0];r.winner=null;r.lastVolley=null;r.log=[];
   // Match-level mirrored weapons by slot.
   const pool=Object.keys(WEAPONS).filter(x=>!["single","dirt","excavator"].includes(x));
   const packs={};for(let slot=1;slot<=6;slot++){const shuffled=[...pool].sort((a,b)=>rand(r.seed+r.match+slot,a.charCodeAt(0))-rand(r.seed+r.match+slot,b.charCodeAt(0)));packs[slot]=shuffled.slice(0,5);}
@@ -189,7 +193,7 @@ export class BarrageRoom {
   await this.arm();await this.save();this.update();
  }
  async arm(){if(this.room.deadline)await this.ctx.storage.setAlarm(this.room.deadline);else await this.ctx.storage.deleteAlarm();}
- async alarm(){const r=this.room;if(!r||r.phase!=="aim"||r.paused||!r.deadline)return;if(Date.now()+100<r.deadline){await this.arm();return;}await this.fire();}
+ async alarm(){const r=this.room;if(!r)return;if(r.phase==="replay"){await this.advance();return;}if(r.phase!=="aim"||r.paused||!r.deadline)return;if(Date.now()+100<r.deadline){await this.arm();return;}await this.fire();}
  async fire(){
   const r=this.room;if(r.phase!=="aim"||r.paused)return;
   r.phase="replay";r.deadline=0;await this.ctx.storage.deleteAlarm();
@@ -198,7 +202,7 @@ export class BarrageRoom {
   const before=r.players.map(p=>({id:p.id,hp:p.hp,alive:p.alive}));
   const seed=(r.seed+r.match*1009+r.turnIndex*19)>>>0;
   const result=simulateVolley({grid:r.grid,players:r.players,shots,wind:r.wind,seed});
-  r.grid=result.grid;for(const t of result.players){const p=r.players.find(p=>p.id===t.id);p.x=t.x;p.y=t.y;p.hp=t.hp;p.alive=t.alive;}
+  r.grid=result.grid;r.gridEpoch++;for(const t of result.players){const p=r.players.find(p=>p.id===t.id);p.x=t.x;p.y=t.y;p.hp=t.hp;p.alive=t.alive;}
   for(const[id,dmg]of Object.entries(result.damageBy)){const p=r.players.find(p=>p.id===id);if(p){p.stats.damage+=dmg;if(dmg>0)p.stats.hits++;}}
   const deaths=before.filter(b=>b.alive&&!r.players.find(p=>p.id===b.id)?.alive);for(const d of deaths){const killer=shots.find(s=>result.damageBy[s.playerId]>0);if(killer){const p=r.players.find(p=>p.id===killer.playerId);if(p)p.stats.kills++;}}
   r.log.push({turn:r.turnIndex,seed,wind:r.wind,shots,before,after:r.players.map(p=>({id:p.id,hp:p.hp,x:p.x,y:p.y,alive:p.alive})),events:result.events});
