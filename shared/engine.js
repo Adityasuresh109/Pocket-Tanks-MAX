@@ -29,40 +29,64 @@ export function baseHeight(x,map="forts"){
  if(map==="hollow")return 495+wave-168*Math.exp(-(((x-640)/240)**2));
  return 475+wave-132*Math.exp(-(((x-640)/178)**2));
 }
+export const SPAWN_X=[90,185,275,365,450,535];
 export function generate(map="forts",seed=1){
  const g=new Uint8Array(CW*CH);
- for(let i=0;i<CW;i++){const x=i*CELL+CELL/2,top=Math.floor(baseHeight(x,map)/CELL);
+ for(let i=0;i<CW;i++){
+  const x=i*CELL+CELL/2,top=Math.floor(baseHeight(x,map)/CELL);
   for(let j=top;j<CH;j++){
    const sym=Math.min(i,CW-1-i),h=(Math.imul(sym+1,73856093)^Math.imul(j+1,19349663)^seed)>>>0;
-   g[j*CW+i]=(j>top+36&&((h^(h>>>13))%100)<25)?2:1;
+   g[j*CW+i]=(j>top+36&&((h^(h>>>13))%100)<25)?MATERIAL.ROCK:MATERIAL.DIRT;
   }
  }
- const rect=(x1,y1,x2,y2,m)=>{for(let y=Math.floor(y1/CELL);y<=Math.floor(y2/CELL);y++)for(let x=Math.floor(x1/CELL);x<=Math.floor(x2/CELL);x++)set(g,x,y,m);};
- for(let side=0;side<2;side++){const mx=x=>side?WIDTH-x:x;
-  if(map==="forts"){
-   const left=Math.min(mx(210),mx(275)),right=Math.max(mx(210),mx(275)),ground=baseHeight(mx(242),map);
-   rect(left,ground-83,right,ground-70,3);rect(side?right-9:left,ground-83,side?right:left+9,ground-10,3);
-   rect(Math.min(mx(350),mx(375)),baseHeight(mx(360),map)-55,Math.max(mx(350),mx(375)),baseHeight(mx(360),map)-6,2);
-  }else if(map==="canyon"){
-   const x=mx(330),ground=baseHeight(x,map);rect(x-10,ground-110,x+10,ground-5,2);
-   const xx=mx(180),gg=baseHeight(xx,map);rect(xx-28,gg-100,xx+28,gg-89,2);
-  }else{
-   const left=Math.min(mx(205),mx(340)),right=Math.max(mx(205),mx(340)),ground=baseHeight(mx(270),map);
-   rect(left,ground+18,right,ground+67,0);
-   rect(side?left:right-14,ground-5,side?left+14:right,ground+67,0);
-   rect(left,ground+67,right,ground+75,3);
+ const rect=(x1,y1,x2,y2,m)=>{
+  for(let y=Math.floor(y1/CELL);y<=Math.floor(y2/CELL);y++)
+   for(let x=Math.floor(x1/CELL);x<=Math.floor(x2/CELL);x++)set(g,x,y,m);
+ };
+ // Build only the left half and reflect its exact cells onto Blue's side.
+ // All slots are separated by at least 80px, eliminating spawn-time splash stacking.
+ if(map==="forts"){
+  for(const slot of [2,5]){
+   const x=SPAWN_X[slot-1],ground=baseHeight(x,map);
+   rect(x-35,ground-84,x+35,ground-72,3); // concrete roof
+   rect(x-35,ground-72,x-25,ground-8,3); // rear wall, opening faces centre
+  }
+  {const x=SPAWN_X[2],ground=baseHeight(x,map);
+   rect(x+31,ground-64,x+53,ground-8,2); // tall rock mesa in front of S3
+  }
+  {const x=SPAWN_X[3],ground=baseHeight(x,map);
+   rect(x-27,ground-24,x+27,ground+36,0); // dug trench at S4
+  }
+ }else if(map==="canyon"){
+  for(const slot of [1,3,4]){
+   const x=SPAWN_X[slot-1],ground=baseHeight(x,map);
+   rect(x+30,ground-94,x+42,ground-10,2); // rock pillar in front
+   rect(x-15,ground-106,x+43,ground-97,2); // overhead ledge
+  }
+ }else if(map==="hollow"){
+  for(const slot of [3,4]){
+   const x=SPAWN_X[slot-1],ground=baseHeight(x,map);
+   rect(x-34,ground+13,x+52,ground+67,0); // underground pocket
+   rect(x-34,ground+69,x+52,ground+78,3); // unbreakable floor support
+   // A corridor and outlet allow actual projectiles to exit into daylight.
+   rect(x+52,ground+16,x+78,ground+64,0);
+   rect(x+72,ground-12,x+83,ground+64,0);
   }
  }
- // Exact material mirroring avoids 4px grid-quantization bias between teams.
- for(let y=0;y<CH;y++)for(let x=0;x<CW/2;x++)g[y*CW+(CW-1-x)]=g[y*CW+x];
- // Preserve concrete-only border as a collision rule, rather than cells.
+ for(let row=0;row<CH;row++)for(let x=0;x<CW/2;x++)g[row*CW+(CW-1-x)]=g[row*CW+x];
  return g;
 }
 export function surfaceBelow(g,x,y=0){const col=clamp(Math.floor(x/CELL),0,CW-1);
  for(let row=clamp(Math.floor(y/CELL),0,CH-1);row<CH;row++)if(g[row*CW+col])return row*CELL;
  return HEIGHT;
 }
-export function spawn(g,side,slot,map="forts"){const x=side===0?116+(slot-1)*56:WIDTH-(116+(slot-1)*56),y=baseHeight(x,map)-12;return {x,y};}
+export function spawn(g,side,slot,map="forts"){
+ const left=SPAWN_X[Math.max(0,Math.min(5,slot-1))];
+ const x=side===0?left:WIDTH-left,top=baseHeight(x,map);
+ // Tunnel spawns stand on their dug floor; surface spawns stand below their roof.
+ const searchY=map==="hollow"&&(slot===3||slot===4)?top+20:top-14;
+ return {x,y:surfaceBelow(g,x,searchY)-12};
+}
 export function coverMultiplier(g,x,y,tank){
  const sample=[[0,0],[-20,-10],[20,-10],[-20,10],[20,10]];
  let blocked=0;
@@ -94,11 +118,11 @@ function settle(g,tanks,totals){
  }
 }
 export function moveTank(g,tanks,id,dx,fuel){
- const t=tanks.find(p=>p.id===id);if(!t?.alive||fuel<=0)return {moved:0};
+ const t=tanks.find(p=>p.id===id);if(!t?.alive||t.buried||fuel<=0)return {moved:0};
  const step=Math.sign(dx)*Math.min(8,Math.abs(dx),fuel);if(!step)return {moved:0};
  const nx=clamp(t.x+step,35,WIDTH-35),dy=surfaceBelow(g,nx,Math.max(0,t.y-28))-12-t.y;
  if(Math.abs(dy)>Math.abs(step)*Math.tan(55*Math.PI/180)+3||tanks.some(p=>p.alive&&p.id!==id&&Math.abs(p.x-nx)<44&&Math.abs(p.y-(t.y+dy))<28)||at(g,nx,t.y-15))return {moved:0};
- t.x=nx;t.y+=dy;return {moved:Math.abs(nx-(nx-step))};
+ const moved=Math.abs(nx-t.x);t.x=nx;t.y+=dy;return {moved};
 }
 export function simulateVolley({grid,players,shots,wind=0,seed=1}){
  const g=grid.slice(),tanks=players.map(p=>({...p})),totals={},damageBy={},events=[],trace=[];
@@ -156,7 +180,7 @@ export function simulateVolley({grid,players,shots,wind=0,seed=1}){
     p.vx+=(wind*(drag/.00035)-drag*mag*p.vx)*step;
     p.vy+=(500-drag*mag*p.vy)*step;
     const lastX=p.x,lastY=p.y;p.x+=p.vx*step;p.y+=p.vy*step;
-    if(p.kind==="splitter"&&!p.split&&p.vy>=0){p.alive=false;p.split=true;for(let i=-2;i<=2;i++){const a=Math.atan2(p.vy,p.vx)+i*.105;live.push({...p,id:serial++,x:p.x,y:p.y,vx:Math.cos(a)*Math.max(180,mag*.75),vy:Math.sin(a)*Math.max(180,mag*.75),split:true,alive:true,kind:"splitter"});}continue;}
+    if(p.kind==="splitter"&&!p.split&&p.vy>=0){p.alive=false;p.split=true;for(let i=-2;i<=2;i++){const a=Math.atan2(p.vy,p.vx)+i*(Math.PI/60);live.push({...p,id:serial++,x:p.x,y:p.y,vx:Math.cos(a)*Math.max(180,mag*.75),vy:Math.sin(a)*Math.max(180,mag*.75),split:true,alive:true,kind:"splitter"});}continue;}
     if(p.x<0||p.x>=WIDTH||p.y<0){p.alive=false;continue;}
     let hitTank=tanks.find(k=>k.alive&&k.id!==p.owner&&Math.abs(k.x-p.x)<22&&Math.abs(k.y-p.y)<12);
     if(hitTank){detonate(p,t);continue;}
