@@ -1,7 +1,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import {CELL,CW,CH,WIDTH,SPAWN_X,generate,spawn,surfaceBelow,simulateVolley,napalmPool,quakePath,moveTank} from "../shared/engine.js";
+import {CELL,CW,CH,WIDTH,SPAWN_X,generate,spawn,surfaceBelow,WEAPONS,simulateVolley,napalmPool,quakePath,moveTank} from "../shared/engine.js";
 
 const flat=()=>{
  const grid=new Uint8Array(CW*CH);
@@ -74,4 +74,18 @@ test("kills belong only to the projectile that eliminated a tank",()=>{
  const result=shoot(flat(),[tank("shooter",0,150),tank("target",1,255,10)],"bertha");
  assert.equal(result.players.find(p=>p.id==="target").alive,false);
  assert.equal(result.killsBy.shooter,1);
+});
+
+test("the actual 120 Hz simulator lands the 45-degree/60-power drag-free anchor at 980 ± 2%",()=>{
+ const grid=flat(),old=WEAPONS.single.drag;
+ try{
+  WEAPONS.single.drag=0;
+  // Start muzzle almost on the flat surface: tests the simulated flight,
+  // rather than only the analytic formula or the tank's barrel elevation.
+  const sx=30+26*Math.cos(Math.PI/4);
+  const result=simulateVolley({grid,players:[{...tank("shooter",0,30),y:617},tank("target",1,1240)],shots:[{playerId:"shooter",angle:45,power:60,weapon:"single"}],wind:0,seed:1});
+  assert.equal(result.events.length,1);
+  const distance=result.events[0].x-sx;
+  assert.ok(Math.abs(distance-980)<=19.6,"Simulated anchor was "+distance+"px");
+ }finally{WEAPONS.single.drag=old;}
 });
