@@ -5,6 +5,6 @@
   "private": true,
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "syntax": "node --check shared/engine.js && node --check worker/index.js && node --check frontend/main.js"
+    "syntax": "node --check shared/engine.js && node --check worker/index.js && node --check frontend/main.js && node --check frontend/camera.js"
   }
 }
