@@ -2,7 +2,7 @@
 
 **Brief:** BUILD_BRIEF.md (§9 is the contract)
 **Builder:** ChatGPT · **Auditor:** Zuko · **Repo:** Adityasuresh109/Pocket-Tanks-MAX
-**Status:** R1 audited 2026-11-19 — **NOT PRODUCTION READY** (strong foundation; full report in AUDIT_R1_REPORT.md)
+**Status:** R2 audited 2026-11-19 — **NOT PRODUCTION READY** (10/13 pass or closed; pacing still blocks; reports: AUDIT_R1_REPORT.md, AUDIT_R2_REPORT.md)
 
 ## How the audit runs (same loop as Mafia / Two Rooms / DecryptIT)
 1. Code read: server-authoritative logic, no aim data in wrong payloads, numbers match brief §5/§6 exactly.
@@ -15,8 +15,8 @@
 - [x] 3. **PASS** — Hidden aim: code read of the Worker's per-client views + builder WS-frame room test — aim goes only to owner + firing squadmates; host and enemies receive none during the aim phase
 - [x] 4. **PASS (note)** — Physics: auditor's independent fine-step integration matches the engine within 0.5% (800 vs 804px); Rail Slug vs 12px rock — no tunnelling; replays bit-identical; wind drift at +50 measured Bertha +52 / Single +103 / Splitter +133. Note: the builder's own anchor test checks the formula, not a simulated landing — add a sim anchor test
 - [x] 5. **PASS** — Squad rotation: room tests run by auditor — 6v6 order exactly A3/A3/B3/B3 alternating teams, 5v5 = 3/3/2/2, 4v4 = 2/2/2/2; dead/empty-squad skip in code. Gap: no test for disconnect-during-aim
-- [ ] 6. **NOT VERIFIED — AT RISK** — Match length: builder did not measure it. Auditor bot match (Single Shot only, no movement, simple learning) hit the 40-turn limit with 1 kill — pacing likely too slow. Needs a human-played 6v6 measurement (target 20–35 turns). **OWNER RULING (2026-11-19): damage must be decisive — a team must clearly WIN inside the limit (wipe or overwhelming margin). A match settled by turn-limit HP totals FAILS this check, even inside 40 turns.**
-- [ ] 7. **PARTIAL** — Terrain & tanks: ROCK 3 hits + CONCRETE immune verified; fall damage exact (60px drop = 5 HP). FAIL: Napalm has no surface pool/flow at all; Dirt Ball burial doesn't really bury (settle pushes the tank back up), so Excavator rescue is partial; Roller/Bouncer flat-surface approximations; Earthquake continuity implemented but untested
+- [ ] 6. **NOT PASSED (R2)** — Match length + OWNER RULING (2026-11-19): damage must be decisive — a team must clearly WIN inside the limit; a turn-limit HP decision FAILS. R2 added a mercy rule (≥24 turns, ≥360 HP lead + ≥2 alive lead → immediate win; auditor verified it triggers in a one-sided match) — **owner sign-off pending (N1)**. But auditor bot evidence: evenly matched dial-in bots still ended in 40-turn HP decisions twice (144v80, 221v164, alive 2v1/2v2) — the endgame drags. Needs real tuning + measured matches (R3 fix list item 1).
+- [ ] 7. **PARTIAL — nearly closed (R2)** — Napalm pool verified independently (spreads on surface, stops at concrete, 18 dmg in pool / 0 behind wall); Dirt Ball burial + Excavator rescue verified end-to-end; Earthquake continuity + concrete cut + 20 dmg verified; fall damage, rock/concrete durability verified R1. REMAINING: Roller stopped-by-trench and Bouncer surface behaviour still untested approximations
 - [x] 8. **PASS** — Mid-air collision: auditor probe — symmetric crossing Single Shots detonated together at (640, 356), zero damage to any tank
 - [x] 9. **PASS** — Timeout & lock-in: only locked shots fire, unlocked hold fire, full lock fires early; fuel 60px verified. Minor bug: fuel can drain at the map edge without moving (moveTank reports |step| even when clamped)
 - [x] 10. **PASS (deviation D3)** — Reconnect: seat-token reclaim in the Durable Object; host drop pauses with remaining time, reconnect resumes. The brief's void-and-re-fire rule is superseded by D2/D3 (resolution is instant server-side; replay is playback only)
@@ -38,3 +38,4 @@
 
 ## Rounds
 - **R1 (2026-11-19)** — Build commit `4f809cb`. Auditor verdict: **NOT PRODUCTION READY**. 8 PASS (checks 1, 2, 3, 4, 5, 8, 9, 10), 3 PARTIAL (7, 11, 12), check 6 not verified / at risk, check 13 open. Fix list: AUDIT_R1_REPORT.md, "Fix list for the builder" (7 items).
+- **R2 (2026-11-19)** — Build commit `8d8d1b3e`. Auditor verdict: **NOT PRODUCTION READY** — close. Suite 22/22 re-run green; Napalm, burial/rescue, spawns (§3.3), Splitter ±6°, tiebreak, kill attribution, edge-fuel all verified closed; live deploy confirmed updated. Check 6 still fails on bot evidence (mercy rule N1 awaits owner sign-off; endgame tuning needed); check 7 down to Roller/Bouncer only; 11/12 partial, 13 open. New: N2 Red starts every match in a series (first-mover edge — recommend alternating). Report: AUDIT_R2_REPORT.md.
